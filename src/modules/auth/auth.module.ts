@@ -1,0 +1,38 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { RedisModule } from '../redis/redis.module';
+import { UsersModule } from '../users/users.module';
+import { AuthController } from './auth.controller';
+import { AuthService } from './services/auth.service';
+import { TokenStoreService } from './services/token-store.service';
+import { JwtAccessAuthGuard } from './guards/jwt-access-auth.guard';
+import { JwtAccessStrategy } from './strategies/jwt-access.strategy';
+import { AppOAuth2Strategy } from './strategies/oauth2.strategy';
+
+@Module({
+  imports: [
+    ConfigModule,
+    RedisModule,
+    UsersModule,
+    PassportModule.register({ session: false, defaultStrategy: 'jwt' }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+      }),
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [
+    AuthService,
+    TokenStoreService,
+    JwtAccessStrategy,
+    AppOAuth2Strategy,
+    JwtAccessAuthGuard,
+  ],
+  exports: [AuthService, TokenStoreService],
+})
+export class AuthModule {}
