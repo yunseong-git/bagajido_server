@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { RedisModule } from '../redis/redis.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './services/auth.service';
@@ -14,7 +13,6 @@ import { AppOAuth2Strategy } from './strategies/oauth2.strategy';
 @Module({
   imports: [
     ConfigModule,
-    RedisModule,
     UsersModule,
     PassportModule.register({ session: false, defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
@@ -33,6 +31,6 @@ import { AppOAuth2Strategy } from './strategies/oauth2.strategy';
     AppOAuth2Strategy,
     JwtAccessAuthGuard,
   ],
-  exports: [AuthService, TokenStoreService],
+  exports: [AuthService],
 })
 export class AuthModule {}

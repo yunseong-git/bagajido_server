@@ -1,4 +1,3 @@
-import { InjectQueue } from '@nestjs/bullmq';
 import {
   ConflictException,
   Inject,
@@ -7,11 +6,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
-import { Queue } from 'bullmq';
 import type { ReviewUpdateEligibilityChecker } from '../../common/interfaces/review-update-eligibility.checker';
 import { REVIEW_UPDATE_ELIGIBILITY_CHECKER } from '../../common/tokens';
-import type { AiPostprocessJobData } from '../queue/ai-postprocess.processor';
-import { AI_POSTPROCESS_QUEUE } from '../queue/queue.constants';
 import { ReviewsPrismaRepository } from '../reviews/reviews.repository';
 import type { RunpodAnalysisWebhookDto } from './dto/runpod-analysis-webhook.dto';
 
@@ -22,8 +18,6 @@ export class AiWebhookService {
     private readonly reviewsRepository: ReviewsPrismaRepository,
     @Inject(REVIEW_UPDATE_ELIGIBILITY_CHECKER)
     private readonly reviewEligibility: ReviewUpdateEligibilityChecker,
-    @InjectQueue(AI_POSTPROCESS_QUEUE)
-    private readonly aiPostprocessQueue: Queue<AiPostprocessJobData>,
   ) {}
 
   private assertSignature(dto: RunpodAnalysisWebhookDto) {
@@ -69,17 +63,6 @@ export class AiWebhookService {
         throw new ConflictException('duplicate_external_job_id');
       }
       throw e;
-    }
-
-    const store_id = await this.reviewsRepository.findStoreIdForReview(
-      dto.review_id,
-    );
-    if (store_id) {
-      await this.aiPostprocessQueue.add(
-        'recompute_store_stats',
-        { store_id, review_id: dto.review_id },
-        { removeOnComplete: true },
-      );
     }
 
     return { ok: true };

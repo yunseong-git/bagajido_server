@@ -13,7 +13,6 @@ describe('AppController (e2e)', () => {
     // Docker Compose 제거 후: Supabase URI를 쓰거나, 로컬 Postgres가 있으면 아래 기본값을 덮어쓰세요.
     process.env.DATABASE_URL ??=
       'postgresql://postgres:postgres@127.0.0.1:5432/postgres';
-    process.env.REDIS_URL ??= 'redis://127.0.0.1:6379';
     process.env.OAUTH2_AUTHORIZATION_URL ??=
       'https://example.com/oauth/authorize';
     process.env.OAUTH2_TOKEN_URL ??= 'https://example.com/oauth/token';
@@ -46,5 +45,37 @@ describe('AppController (e2e)', () => {
       .get('/health')
       .expect(200)
       .expect({ status: 'ok' });
+  });
+
+  it('/stores/map (GET) - zoom 누락 시 400', () => {
+    return request(app.getHttpServer())
+      .get('/stores/map')
+      .query({
+        xmin: 126.9,
+        ymin: 37.5,
+        xmax: 127.1,
+        ymax: 37.6,
+      })
+      .expect(400);
+  });
+
+  it('/stores/:storeId/likes (POST) - 인증 없으면 401', () => {
+    return request(app.getHttpServer())
+      .post('/stores/550e8400-e29b-41d4-a716-446655440000/likes')
+      .expect(401);
+  });
+
+  it('/users/me/liked-stores (GET) - 인증 없으면 401', () => {
+    return request(app.getHttpServer()).get('/users/me/liked-stores').expect(401);
+  });
+
+  it('/stores/:storeId/picks (POST) - 인증 없으면 401', () => {
+    return request(app.getHttpServer())
+      .post('/stores/550e8400-e29b-41d4-a716-446655440000/picks')
+      .expect(401);
+  });
+
+  it('/users/me/picked-stores (GET) - 인증 없으면 401', () => {
+    return request(app.getHttpServer()).get('/users/me/picked-stores').expect(401);
   });
 });

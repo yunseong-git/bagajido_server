@@ -1,24 +1,34 @@
-import { Inject, Injectable } from '@nestjs/common';
-import type Redis from 'ioredis';
-import { REDIS_CLIENT } from '../../redis/redis.constants';
+import { Injectable } from '@nestjs/common';
+
+type RefreshTokenRecord = {
+  user_id: string;
+  expires_at: number;
+};
 
 @Injectable()
 export class TokenStoreService {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
-
-  private key(jti: string) {
-    return `refresh:${jti}`;
-  }
+  private readonly refreshTokens = new Map<string, RefreshTokenRecord>();
 
   async saveRefreshJti(jti: string, user_id: string, ttl_seconds: number) {
-    await this.redis.set(this.key(jti), user_id, 'EX', ttl_seconds);
+    const expires_at = Date.now() + ttl_seconds * 1000;
+    this.refreshTokens.set(jti, { user_id, expires_at });
   }
 
-  async getUserIdForRefreshJti(jti: string): Promise<string | null> {
-    return this.redis.get(this.key(jti));
+  async getUserIdForRefreshJti(jti: string) {
+    const token = this.refreshTokens.get(jti);
+    if (!token) {
+      return null;
+    }
+
+    if (token.expires_at <= Date.now()) {
+      this.refreshTokens.delete(jti);
+      return null;
+    }
+
+    return token.user_id;
   }
 
   async revokeRefreshJti(jti: string) {
-    await this.redis.del(this.key(jti));
+    this.refreshTokens.delete(jti);
   }
 }

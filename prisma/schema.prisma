@@ -4,7 +4,8 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -19,6 +20,8 @@ model User {
   stores_owned Store[]  @relation("StoreOwner")
   orders       Order[]
   reviews      Review[]
+  store_likes  StoreLike[]
+  store_picks  StorePick[]
 
   @@unique([oauth_provider, oauth_subject], map: "users_oauth_provider_oauth_subject_key")
   @@map("users")
@@ -36,9 +39,41 @@ model Store {
   menus      Menu[]
   orders     Order[]
   store_stat StoreStat?
+  liked_by   StoreLike[]
+  picked_by  StorePick[]
 
   @@index([owner_id], map: "stores_owner_id_idx")
   @@map("stores")
+}
+
+model StoreLike {
+  id         String   @id @default(uuid()) @db.Uuid
+  user_id    String   @db.Uuid
+  store_id   String   @db.Uuid
+  created_at DateTime @default(now())
+
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, store_id], map: "store_likes_user_id_store_id_key")
+  @@index([store_id], map: "store_likes_store_id_idx")
+  @@index([user_id], map: "store_likes_user_id_idx")
+  @@map("store_likes")
+}
+
+model StorePick {
+  id         String   @id @default(uuid()) @db.Uuid
+  user_id    String   @db.Uuid
+  store_id   String   @db.Uuid
+  created_at DateTime @default(now())
+
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, store_id], map: "store_picks_user_id_store_id_key")
+  @@index([store_id], map: "store_picks_store_id_idx")
+  @@index([user_id], map: "store_picks_user_id_idx")
+  @@map("store_picks")
 }
 
 model Menu {
@@ -119,6 +154,9 @@ model Review {
 model StoreStat {
   store_id          String   @id @db.Uuid
   avg_value_score   Decimal? @db.Decimal(5, 2)
+  review_count     Int      @default(0)
+  like_count       Int      @default(0)
+  pick_count       Int      @default(0)
   ai_summary_line   String?  @db.VarChar(500)
   updated_at        DateTime @updatedAt
 

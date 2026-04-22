@@ -1,12 +1,50 @@
-import { Controller, Get } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAccessAuthGuard } from '../auth/guards/jwt-access-auth.guard';
+import { CreateOrderDto } from './dto/create-order.dto';
+import { FindOrderQueryDto } from './dto/find-order-query.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
+import { OrdersService } from './orders.service';
 
 @ApiTags('orders')
 @Controller('orders')
 export class OrdersController {
+  constructor(private readonly ordersService: OrdersService) {}
+
+  @Post()
+  @UseGuards(JwtAccessAuthGuard)
+  @ApiOperation({ summary: '주문 생성' })
+  create(@Req() req: Request & { user: { id: string } }, @Body() body: CreateOrderDto) {
+    return this.ordersService.create(req.user.id, body);
+  }
+
+  @Patch(':orderId')
+  @UseGuards(JwtAccessAuthGuard)
+  @ApiOperation({ summary: '주문 수정' })
+  update(@Param('orderId') orderId: string, @Body() body: UpdateOrderDto) {
+    return this.ordersService.update(orderId, body);
+  }
+
+  @Get(':orderId')
+  @ApiOperation({ summary: '주문 단건 조회' })
+  findOne(@Param('orderId') orderId: string) {
+    return this.ordersService.findOne(orderId);
+  }
+
   @Get()
-  @ApiOperation({ summary: '주문 목록 (Phase 1 스텁)' })
-  listStub() {
-    return { items: [] };
+  @ApiOperation({ summary: '주문 목록 조회' })
+  list(@Query() query: FindOrderQueryDto) {
+    return this.ordersService.findMany(query);
   }
 }

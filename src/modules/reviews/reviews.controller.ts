@@ -1,12 +1,50 @@
-import { Controller, Get } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAccessAuthGuard } from '../auth/guards/jwt-access-auth.guard';
+import { CreateReviewDto } from './dto/create-review.dto';
+import { FindReviewQueryDto } from './dto/find-review-query.dto';
+import { UpdateReviewDto } from './dto/update-review.dto';
+import { ReviewsService } from './reviews.service';
 
 @ApiTags('reviews')
 @Controller('reviews')
 export class ReviewsController {
+  constructor(private readonly reviewsService: ReviewsService) {}
+
+  @Post()
+  @UseGuards(JwtAccessAuthGuard)
+  @ApiOperation({ summary: '리뷰 생성' })
+  create(@Req() req: Request & { user: { id: string } }, @Body() body: CreateReviewDto) {
+    return this.reviewsService.create(req.user.id, body);
+  }
+
+  @Patch(':reviewId')
+  @UseGuards(JwtAccessAuthGuard)
+  @ApiOperation({ summary: '리뷰 수정' })
+  update(@Param('reviewId') reviewId: string, @Body() body: UpdateReviewDto) {
+    return this.reviewsService.update(reviewId, body);
+  }
+
+  @Get(':reviewId')
+  @ApiOperation({ summary: '리뷰 단건 조회' })
+  findOne(@Param('reviewId') reviewId: string) {
+    return this.reviewsService.findOne(reviewId);
+  }
+
   @Get()
-  @ApiOperation({ summary: '리뷰 목록 (Phase 1 스텁)' })
-  listStub() {
-    return { items: [] };
+  @ApiOperation({ summary: '리뷰 목록 조회' })
+  list(@Query() query: FindReviewQueryDto) {
+    return this.reviewsService.findMany(query);
   }
 }
