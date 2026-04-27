@@ -143,6 +143,7 @@ export class StoresPrismaRepository implements StoresRepository {
       //ST_SetSRID(좌표, 4326) -> 좌표 시스템 설정(4326이라는 전세계 표준 좌표계계)
       //RETURNING id::text AS id -> 데이터 삽입 후 백엔드 서비스에 id를 text로 반환환
       //id::text AS id -> id 타입 변환
+      //pinecone(api_key=)
       
       const storeId = rows[0]?.id;
       if (!storeId) throw new Error('Failed to insert store');

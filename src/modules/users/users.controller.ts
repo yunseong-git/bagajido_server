@@ -1,12 +1,23 @@
 import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
-import { UserRole } from '@prisma/client';
-import { ApiOperation, ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { UserRole } from '../auth/types/user-role.type';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAccessAuthGuard } from '../auth/guards/jwt-access-auth.guard';
 import { TestLoginDto } from './dto/test-login.dto';
 import { StoresService } from '../stores/stores.service';
 import { Roles } from '../auth/decorators/roles.decorator';
+import {
+  UserEntityResponseDto,
+  UserProfileResponseDto,
+  UserStoreListItemResponseDto,
+} from './dto/res/users-response.dto';
 
 @ApiTags('users')
 @Controller('users')
@@ -18,6 +29,7 @@ export class UsersController {
 
   @Post('test-login')
   @ApiOperation({ summary: '개발용 테스트 로그인 (기존/신규 선택)' })
+  @ApiCreatedResponse({ type: UserEntityResponseDto })
   async testLogin(@Body() body: TestLoginDto) {
     // 1. 이메일이 들어오지 않은 경우 -> 완전 새로운 랜덤 유저 생성
     if (!body || !body.email) {
@@ -38,6 +50,7 @@ export class UsersController {
   @Roles(UserRole.USER, UserRole.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: '내 프로필 조회' })
+  @ApiOkResponse({ type: UserProfileResponseDto })
   async getMyProfile(
     @Req() req: Request & { userEntity: { id: string; role: UserRole } }
   ) {
@@ -49,6 +62,7 @@ export class UsersController {
   @Roles(UserRole.USER, UserRole.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: '내가 좋아요한 가게 목록 조회' })
+  @ApiOkResponse({ type: [UserStoreListItemResponseDto] })
   async getMyLikedStores(@Req() req: Request & { userEntity: { id: string } }) {
     return this.storesService.findMyLikedStores(req.userEntity.id);
   }
@@ -58,6 +72,7 @@ export class UsersController {
   @Roles(UserRole.USER, UserRole.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: '내가 찜한 가게 목록 조회' })
+  @ApiOkResponse({ type: [UserStoreListItemResponseDto] })
   async getMyPickedStores(@Req() req: Request & { userEntity: { id: string } }) {
     return this.storesService.findMyPickedStores(req.userEntity.id);
   }
