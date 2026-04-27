@@ -10,8 +10,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { UserRole } from '@prisma/client';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAccessAuthGuard } from '../auth/guards/jwt-access-auth.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { FindReviewQueryDto } from './dto/find-review-query.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
@@ -24,9 +26,10 @@ export class ReviewsController {
 
   @Post()
   @UseGuards(JwtAccessAuthGuard)
+  @Roles(UserRole.USER, UserRole.ADMIN)
   @ApiOperation({ summary: '리뷰 생성' })
-  create(@Req() req: Request & { user: { id: string } }, @Body() body: CreateReviewDto) {
-    return this.reviewsService.create(req.user.id, body);
+  create(@Req() req: Request & { userEntity: { id: string } }, @Body() body: CreateReviewDto) {
+    return this.reviewsService.create(req.userEntity.id, body);
   }
 
   @Patch(':reviewId')
