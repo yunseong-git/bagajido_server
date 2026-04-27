@@ -6,12 +6,12 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
-import { UserRole } from '@prisma/client';
 import type { Request } from 'express';
 import { Observable, firstValueFrom } from 'rxjs';
 import { REQUIRE_OWNER_KEY } from '../decorators/require-owner.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { UserRole } from '../types/user-role.type';
 
 type RequestWithAuthContext = Request & {
   user?: { oauth_subject?: string };
