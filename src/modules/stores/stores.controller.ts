@@ -10,12 +10,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { UserRole } from '@prisma/client';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { StoresService } from './stores.service';
 import { FindStoresQueryDto } from './dto/find-store-query.dto';
 import { FindStoreMapQueryDto } from './dto/find-store-map-query.dto';
 import { JwtAccessAuthGuard } from '../auth/guards/jwt-access-auth.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RequireOwner } from '../auth/decorators/require-owner.decorator';
 
 @ApiTags('stores')
 @Controller('stores')
@@ -59,45 +62,76 @@ export class StoresController {
 
   @Post(':storeId/likes')
   @UseGuards(JwtAccessAuthGuard)
+  @Roles(UserRole.USER, UserRole.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: '가게 좋아요' })
   async likeStore(
-    @Req() req: Request & { user: { id: string } },
+    @Req() req: Request & { userEntity: { id: string } },
     @Param('storeId') storeId: string,
   ) {
-    return await this.storesService.likeStore(req.user.id, storeId);
+    return await this.storesService.likeStore(req.userEntity.id, storeId);
   }
 
   @Delete(':storeId/likes')
   @UseGuards(JwtAccessAuthGuard)
+  @Roles(UserRole.USER, UserRole.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: '가게 좋아요 해제' })
   async unlikeStore(
-    @Req() req: Request & { user: { id: string } },
+    @Req() req: Request & { userEntity: { id: string } },
     @Param('storeId') storeId: string,
   ) {
-    return await this.storesService.unlikeStore(req.user.id, storeId);
+    return await this.storesService.unlikeStore(req.userEntity.id, storeId);
   }
 
   @Post(':storeId/picks')
   @UseGuards(JwtAccessAuthGuard)
+  @Roles(UserRole.USER, UserRole.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: '가게 찜하기' })
   async pickStore(
-    @Req() req: Request & { user: { id: string } },
+    @Req() req: Request & { userEntity: { id: string } },
     @Param('storeId') storeId: string,
   ) {
-    return await this.storesService.pickStore(req.user.id, storeId);
+    return await this.storesService.pickStore(req.userEntity.id, storeId);
   }
 
   @Delete(':storeId/picks')
   @UseGuards(JwtAccessAuthGuard)
+  @Roles(UserRole.USER, UserRole.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: '가게 찜 해제' })
   async unpickStore(
-    @Req() req: Request & { user: { id: string } },
+    @Req() req: Request & { userEntity: { id: string } },
     @Param('storeId') storeId: string,
   ) {
-    return await this.storesService.unpickStore(req.user.id, storeId);
+    return await this.storesService.unpickStore(req.userEntity.id, storeId);
+  }
+
+  @Post(':storeId/owner-note')
+  @UseGuards(JwtAccessAuthGuard)
+  @RequireOwner()
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: '오너 전용 메모 작성 예시' })
+  ownerOnlyExample(
+    @Req() req: Request & { owner: { id: string } },
+    @Param('storeId') storeId: string,
+    @Body('note') note?: string,
+  ) {
+    return {
+      store_id: storeId,
+      owner_id: req.owner.id,
+      note: note ?? '',
+      message: 'RequireOwner() 인가 통과 예시',
+    };
+  }
+
+  @Delete(':storeId/admin-only')
+  @UseGuards(JwtAccessAuthGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: '관리자 전용 예시 API' })
+  adminOnlyExample(@Param('storeId') storeId: string) {
+    return { store_id: storeId, message: 'Roles(ADMIN) 인가 통과 예시' };
   }
 }

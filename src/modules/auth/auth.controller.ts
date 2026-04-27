@@ -52,7 +52,7 @@ export class AuthController {
   @UseGuards(JwtAccessAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: '액세스 토큰 검증 스텁' })
-  me(@Req() req: Request & { user: { id: string } }) {
-    return { user_id: req.user.id };
+  me(@Req() req: Request & { user: { oauth_subject: string } }) {
+    return { oauth_subject: req.user.oauth_subject };
   }
 }

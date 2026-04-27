@@ -10,8 +10,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { UserRole } from '@prisma/client';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAccessAuthGuard } from '../auth/guards/jwt-access-auth.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { FindOrderQueryDto } from './dto/find-order-query.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
@@ -24,9 +26,10 @@ export class OrdersController {
 
   @Post()
   @UseGuards(JwtAccessAuthGuard)
+  @Roles(UserRole.USER, UserRole.ADMIN)
   @ApiOperation({ summary: '주문 생성' })
-  create(@Req() req: Request & { user: { id: string } }, @Body() body: CreateOrderDto) {
-    return this.ordersService.create(req.user.id, body);
+  create(@Req() req: Request & { userEntity: { id: string } }, @Body() body: CreateOrderDto) {
+    return this.ordersService.create(req.userEntity.id, body);
   }
 
   @Patch(':orderId')
