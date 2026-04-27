@@ -3,125 +3,178 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
-model User {
-  id               String   @id @default(uuid()) @db.Uuid
-  oauth_provider   String   @db.VarChar(32)
-  oauth_subject    String   @db.VarChar(255)
-  email            String?  @db.VarChar(320)
-  display_name     String?  @db.VarChar(100)
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+// 1. User 역할 관리를 위한 Enum 추가
+enum UserRole {
+  USER
+  ADMIN
+}
 
-  stores_owned Store[]  @relation("StoreOwner")
-  orders       Order[]
-  reviews      Review[]
-  store_likes  StoreLike[]
-  store_picks  StorePick[]
+model User {
+  id               String      @id @default(uuid()) @db.Uuid
+  role             UserRole    @default(USER) // 관리자/일반유저 구분
+  oauth_provider   String      @db.VarChar(32)
+  oauth_subject    String      @db.VarChar(255)
+  email            String?     @db.VarChar(320)
+  display_name     String?     @db.VarChar(100)
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
+
+  orders           Order[]
+  reviews          Review[]
+  store_likes      StoreLike[]
+  store_picks      StorePick[]
 
   @@unique([oauth_provider, oauth_subject], map: "users_oauth_provider_oauth_subject_key")
   @@map("users")
 }
 
+// 1. 가게 사장님(Owner)용 분리된 테이블
+model Owner {
+  id               String      @id @default(uuid()) @db.Uuid
+  oauth_provider   String      @db.VarChar(32)
+  oauth_subject    String      @db.VarChar(255)
+  email            String?     @db.VarChar(320)
+  display_name     String?     @db.VarChar(100)
+  phone_number     String?     @db.VarChar(32) // 추후 휴대폰 인증 대비
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
+
+  store_details    StoreDetail[]
+
+  @@unique([oauth_provider, oauth_subject], map: "owners_oauth_provider_oauth_subject_key")
+  @@map("owners")
+}
+
+// 3. Store (클라이언트 렌더링용 간단 테이블 & 외부 API place_id 적용)
 model Store {
-  id         String   @id @default(uuid()) @db.Uuid
-  owner_id   String   @db.Uuid
-  name       String   @db.VarChar(200)
-  location   Unsupported("geometry(Point,4326)")
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  place_id         String      @id @db.VarChar(255) // 외부 API(구글맵/TourAPI 등) 고유 ID
+  name             String      @db.VarChar(200)
+  category         String?     @db.VarChar(100)
+  
+  // 2. 클러스터링 제외, 필요시 사용할 가벼운 위경도 좌표
+  latitude         Decimal?    @db.Decimal(10, 7)
+  longitude        Decimal?    @db.Decimal(10, 7)
 
-  owner      User       @relation("StoreOwner", fields: [owner_id], references: [id], onDelete: Restrict)
-  menus      Menu[]
-  orders     Order[]
-  store_stat StoreStat?
-  liked_by   StoreLike[]
-  picked_by  StorePick[]
+  // 통계 데이터 (기존 StoreStat 통합)
+  avg_value_score  Decimal?    @db.Decimal(5, 2)
+  review_count     Int         @default(0)
+  like_count       Int         @default(0)
+  pick_count       Int         @default(0)
+  ai_summary_line  String?     @db.VarChar(500)
+  
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
 
-  @@index([owner_id], map: "stores_owner_id_idx")
+  detail           StoreDetail?
+  menus            Menu[]
+  orders           Order[]
+  liked_by         StoreLike[]
+  picked_by        StorePick[]
+
   @@map("stores")
 }
 
+// 3. StoreDetail (상세 정보 테이블)
+model StoreDetail {
+  place_id         String      @id @db.VarChar(255)
+  owner_id         String?     @db.Uuid // 외부 API 데이터라 사장님 미등록 상태일 수 있음
+  
+  address          String?     @db.VarChar(500)
+  contact_number   String?     @db.VarChar(50)
+  opening_hours    String?     @db.VarChar(500)
+  description      String?     @db.Text
+  
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
+
+  store            Store       @relation(fields: [place_id], references: [place_id], onDelete: Cascade)
+  owner            Owner?      @relation(fields: [owner_id], references: [id], onDelete: SetNull)
+
+  @@index([owner_id], map: "store_details_owner_id_idx")
+  @@map("store_details")
+}
+
 model StoreLike {
-  id         String   @id @default(uuid()) @db.Uuid
-  user_id    String   @db.Uuid
-  store_id   String   @db.Uuid
-  created_at DateTime @default(now())
+  id               String   @id @default(uuid()) @db.Uuid
+  user_id          String   @db.Uuid
+  place_id         String   @db.VarChar(255)
+  created_at       DateTime @default(now())
 
-  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  store            Store    @relation(fields: [place_id], references: [place_id], onDelete: Cascade)
 
-  @@unique([user_id, store_id], map: "store_likes_user_id_store_id_key")
-  @@index([store_id], map: "store_likes_store_id_idx")
+  @@unique([user_id, place_id], map: "store_likes_user_id_place_id_key")
+  @@index([place_id], map: "store_likes_place_id_idx")
   @@index([user_id], map: "store_likes_user_id_idx")
   @@map("store_likes")
 }
 
 model StorePick {
-  id         String   @id @default(uuid()) @db.Uuid
-  user_id    String   @db.Uuid
-  store_id   String   @db.Uuid
-  created_at DateTime @default(now())
+  id               String   @id @default(uuid()) @db.Uuid
+  user_id          String   @db.Uuid
+  place_id         String   @db.VarChar(255)
+  created_at       DateTime @default(now())
 
-  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  store            Store    @relation(fields: [place_id], references: [place_id], onDelete: Cascade)
 
-  @@unique([user_id, store_id], map: "store_picks_user_id_store_id_key")
-  @@index([store_id], map: "store_picks_store_id_idx")
+  @@unique([user_id, place_id], map: "store_picks_user_id_place_id_key")
+  @@index([place_id], map: "store_picks_place_id_idx")
   @@index([user_id], map: "store_picks_user_id_idx")
   @@map("store_picks")
 }
 
 model Menu {
-  id                   String   @id @default(uuid()) @db.Uuid
-  store_id             String   @db.Uuid
-  name                 String   @db.VarChar(200)
-  reference_image_url  String   @db.VarChar(2048)
+  id                   String      @id @default(uuid()) @db.Uuid
+  place_id             String      @db.VarChar(255)
+  name                 String      @db.VarChar(200)
+  reference_image_url  String      @db.VarChar(2048)
   portion_grams        Int?
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
+  created_at           DateTime    @default(now())
+  updated_at           DateTime    @updatedAt
 
-  store       Store       @relation(fields: [store_id], references: [id], onDelete: Cascade)
-  order_items OrderItem[]
-  reviews     Review[]
+  store                Store       @relation(fields: [place_id], references: [place_id], onDelete: Cascade)
+  order_items          OrderItem[]
+  reviews              Review[]
 
-  @@index([store_id], map: "menus_store_id_idx")
+  @@index([place_id], map: "menus_place_id_idx")
   @@map("menus")
 }
 
 model Order {
-  id                  String   @id @default(uuid()) @db.Uuid
-  user_id             String   @db.Uuid
-  store_id            String   @db.Uuid
-  total_amount        Decimal  @db.Decimal(12, 2)
-  currency            String   @db.VarChar(8)
-  payment_status      String   @db.VarChar(32)
-  external_payment_id String?  @db.VarChar(128)
-  created_at          DateTime @default(now())
+  id                   String      @id @default(uuid()) @db.Uuid
+  user_id              String      @db.Uuid
+  place_id             String      @db.VarChar(255)
+  total_amount         Decimal     @db.Decimal(12, 2)
+  currency             String      @db.VarChar(8)
+  payment_status       String      @db.VarChar(32)
+  external_payment_id  String?     @db.VarChar(128)
+  created_at           DateTime    @default(now())
 
-  user   User        @relation(fields: [user_id], references: [id], onDelete: Restrict)
-  store  Store       @relation(fields: [store_id], references: [id], onDelete: Restrict)
-  items  OrderItem[]
-  reviews Review[]
+  user                 User        @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  store                Store       @relation(fields: [place_id], references: [place_id], onDelete: Restrict)
+  items                OrderItem[]
+  reviews              Review[]
 
   @@index([user_id], map: "orders_user_id_idx")
-  @@index([store_id], map: "orders_store_id_idx")
+  @@index([place_id], map: "orders_place_id_idx")
   @@map("orders")
 }
 
 model OrderItem {
-  id         String  @id @default(uuid()) @db.Uuid
-  order_id   String  @db.Uuid
-  menu_id    String  @db.Uuid
-  quantity   Int
-  unit_price Decimal @db.Decimal(12, 2)
+  id           String  @id @default(uuid()) @db.Uuid
+  order_id     String  @db.Uuid
+  menu_id      String  @db.Uuid
+  quantity     Int
+  unit_price   Decimal @db.Decimal(12, 2)
 
-  order Order @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  menu  Menu  @relation(fields: [menu_id], references: [id], onDelete: Restrict)
+  order        Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  menu         Menu    @relation(fields: [menu_id], references: [id], onDelete: Restrict)
 
   @@index([order_id], map: "order_items_order_id_idx")
   @@index([menu_id], map: "order_items_menu_id_idx")
@@ -139,10 +192,10 @@ model Review {
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt
 
-  user      User                 @relation(fields: [user_id], references: [id], onDelete: Restrict)
-  order     Order                @relation(fields: [order_id], references: [id], onDelete: Restrict)
-  menu      Menu                 @relation(fields: [menu_id], references: [id], onDelete: Restrict)
-  callbacks AiAnalysisCallback[]
+  user         User      @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  order        Order     @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  menu         Menu      @relation(fields: [menu_id], references: [id], onDelete: Restrict)
+  callbacks    AiAnalysisCallback[]
 
   @@index([user_id], map: "reviews_user_id_idx")
   @@index([order_id], map: "reviews_order_id_idx")
@@ -151,29 +204,15 @@ model Review {
   @@map("reviews")
 }
 
-model StoreStat {
-  store_id          String   @id @db.Uuid
-  avg_value_score   Decimal? @db.Decimal(5, 2)
-  review_count     Int      @default(0)
-  like_count       Int      @default(0)
-  pick_count       Int      @default(0)
-  ai_summary_line   String?  @db.VarChar(500)
-  updated_at        DateTime @updatedAt
-
-  store Store @relation(fields: [store_id], references: [id], onDelete: Cascade)
-
-  @@map("store_stats")
-}
-
 model AiAnalysisCallback {
-  id                String   @id @default(uuid()) @db.Uuid
-  external_job_id   String   @unique @db.VarChar(128)
-  review_id         String   @db.Uuid
-  status            String   @db.VarChar(32)
-  payload           Json
-  received_at       DateTime @default(now())
+  id               String   @id @default(uuid()) @db.Uuid
+  external_job_id  String   @unique @db.VarChar(128)
+  review_id        String   @db.Uuid
+  status           String   @db.VarChar(32)
+  payload          Json
+  received_at      DateTime @default(now())
 
-  review Review @relation(fields: [review_id], references: [id], onDelete: Cascade)
+  review           Review   @relation(fields: [review_id], references: [id], onDelete: Cascade)
 
   @@index([review_id], map: "ai_analysis_callbacks_review_id_idx")
   @@map("ai_analysis_callbacks")
