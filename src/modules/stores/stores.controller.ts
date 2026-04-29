@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -20,8 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { StoresService } from './stores.service';
-import { FindStoresQueryDto } from './dto/find-store-query.dto';
-import { FindStoreMapQueryDto } from './dto/find-store-map-query.dto';
+import { FindStoreMetricsByIdsDto } from './dto/find-store-metrics-by-ids.dto';
 import { JwtAccessAuthGuard } from '../auth/guards/jwt-access-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RequireOwner } from '../auth/decorators/require-owner.decorator';
@@ -31,6 +31,11 @@ import {
   StoreActionResponseDto,
   StoreSummaryResponseDto,
 } from './dto/res/stores-response.dto';
+import {
+  MockSeedResponseDto,
+  StoreMetricsListResponseDto,
+  StoreWithDetailResponseDto,
+} from './dto/res/store-with-detail.res.dto';
 
 @ApiTags('stores')
 @Controller('stores')
@@ -43,23 +48,12 @@ export class StoresController {
     return this.storesService.createWithLngLat(body);
   }
 
-  @Get('bounds')
-  @ApiOperation({ summary: '지도 범위 내 매장 목록 조회' })
-  @ApiOkResponse({ type: [StoreSummaryResponseDto] })
-  async listWithinBounds(@Query() query: FindStoresQueryDto) {
-    return await this.storesService.findWithinBounds(query);
-  }
-
-  @Get('map')
-  @ApiOperation({ summary: '지도 클러스터링 데이터 조회' })
-  @ApiOkResponse({ type: [StoreSummaryResponseDto] })
-  async listMapItems(@Query() query: FindStoreMapQueryDto) {
-    return await this.storesService.findMapItems(query);
-  }
-
   @Get()
-  @ApiOperation({ summary: '전체 매장 목록 조회' })
-  @ApiOkResponse({ type: [StoreSummaryResponseDto] })
+  @ApiOperation({
+    summary:
+      '전체 매장 목록 (각 항목: store=`stores`, store_detail=`store_details`)',
+  })
+  @ApiOkResponse({ type: [StoreWithDetailResponseDto] })
   async getAll() {
     return await this.storesService.findAll();
   }
@@ -71,9 +65,42 @@ export class StoresController {
     return await this.storesService.searchByName(name);
   }
 
+  @Get('metrics')
+  @ApiOperation({
+    summary: '매장 통계·요약 목록 (`stores` 테이블 컬럼, 구 store_stats 대체)',
+  })
+  @ApiOkResponse({ type: StoreMetricsListResponseDto })
+  async listMetrics() {
+    const items = await this.storesService.findMetricsFromStores();
+    return { items };
+  }
+
+  @Post('metrics/by-ids')
+  @ApiOperation({ summary: 'place_id 목록으로 매장 metrics 조회' })
+  @ApiOkResponse({ type: StoreMetricsListResponseDto })
+  async listMetricsByIds(@Body() body: FindStoreMetricsByIdsDto) {
+    const items = await this.storesService.findMetricsByPlaceIds(body.place_ids);
+    return { items };
+  }
+
+  @Post('dev/seed-mock')
+  @ApiOperation({
+    summary:
+      '개발용 목업 매장 삽입 (stores + store_details). production 에서는 403',
+  })
+  @ApiOkResponse({ type: MockSeedResponseDto })
+  async seedMock() {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('mock_seed_disabled_in_production');
+    }
+    return await this.storesService.seedMockStores();
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: '매장 상세 조회 (ID)' })
-  @ApiOkResponse({ type: StoreSummaryResponseDto })
+  @ApiOperation({
+    summary: '매장 상세 (store: `stores` 요약·통계 + store_detail: `store_details`)',
+  })
+  @ApiOkResponse({ type: StoreWithDetailResponseDto })
   async getOne(@Param('id') id: string) {
     return await this.storesService.findOne(id);
   }
@@ -142,7 +169,7 @@ export class StoresController {
     @Body('note') note?: string,
   ) {
     return {
-      store_id: storeId,
+      place_id: storeId,
       owner_id: req.owner.id,
       note: note ?? '',
       message: 'RequireOwner() 인가 통과 예시',
@@ -156,6 +183,6 @@ export class StoresController {
   @ApiOperation({ summary: '관리자 전용 예시 API' })
   @ApiOkResponse({ type: AdminOnlyResponseDto })
   adminOnlyExample(@Param('storeId') storeId: string) {
-    return { store_id: storeId, message: 'Roles(ADMIN) 인가 통과 예시' };
+    return { place_id: storeId, message: 'Roles(ADMIN) 인가 통과 예시' };
   }
 }

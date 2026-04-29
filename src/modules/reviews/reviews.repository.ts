@@ -127,9 +127,9 @@ export class ReviewsPrismaRepository implements ReviewsRepository {
   async findStoreIdForReview(review_id: string): Promise<string | null> {
     const row = await this.prisma.review.findUnique({
       where: { id: review_id },
-      select: { menu: { select: { store_id: true } } },
+      select: { menu: { select: { place_id: true } } },
     });
-    return row?.menu.store_id ?? null;
+    return row?.menu.place_id ?? null;
   }
 
   async applyAiWebhookResult(input: ApplyAiWebhookResultInput): Promise<void> {

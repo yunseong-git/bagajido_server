@@ -6,7 +6,6 @@ import {
 import { Prisma } from '@prisma/client';
 import { StoresPrismaRepository } from './stores.repository';
 import { CreateStoreDto } from './dto/create-store.dto';
-import { FindStoreMapQueryDto } from './dto/find-store-map-query.dto';
 
 @Injectable()
 export class StoresService {
@@ -14,14 +13,6 @@ export class StoresService {
 
   async createWithLngLat(dto: CreateStoreDto) {
     return await this.storesRepository.createWithLngLat(dto);
-  }
-
-  async findWithinBounds(bounds: { xmin: number; ymin: number; xmax: number; ymax: number }) {
-    return await this.storesRepository.findWithinBounds(bounds);
-  }
-
-  async findMapItems(query: FindStoreMapQueryDto) {
-    return this.storesRepository.findMapItems(query);
   }
 
   async findAll() {
@@ -37,8 +28,8 @@ export class StoresService {
   }
 
   async likeStore(user_id: string, store_id: string) {
-    const store = await this.storesRepository.findById(store_id);
-    if (!store) {
+    const found = await this.storesRepository.findById(store_id);
+    if (!found) {
       throw new NotFoundException('store_not_found');
     }
     try {
@@ -65,8 +56,8 @@ export class StoresService {
   }
 
   async pickStore(user_id: string, store_id: string) {
-    const store = await this.storesRepository.findById(store_id);
-    if (!store) {
+    const found = await this.storesRepository.findById(store_id);
+    if (!found) {
       throw new NotFoundException('store_not_found');
     }
     try {
@@ -90,5 +81,19 @@ export class StoresService {
 
   async findMyPickedStores(user_id: string) {
     return this.storesRepository.findPickedStores(user_id);
+  }
+
+  /** `stores` 테이블 통계 컬럼 목록 (구 store_stats 대체) */
+  findMetricsFromStores() {
+    return this.storesRepository.findMetricsFromStores();
+  }
+
+  findMetricsByPlaceIds(place_ids: string[]) {
+    return this.storesRepository.findMetricsByPlaceIds(place_ids);
+  }
+
+  /** 비-production 전용 목업 시드 */
+  seedMockStores() {
+    return this.storesRepository.seedMockStores();
   }
 }

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class FindOrderQueryDto {
   @ApiPropertyOptional({ description: '사용자 ID' })
@@ -7,8 +7,9 @@ export class FindOrderQueryDto {
   @IsOptional()
   user_id?: string;
 
-  @ApiPropertyOptional({ description: '매장 ID' })
-  @IsUUID()
+  @ApiPropertyOptional({ description: '매장 place_id' })
+  @IsString()
+  @MaxLength(255)
   @IsOptional()
-  store_id?: string;
+  place_id?: string;
 }

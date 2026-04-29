@@ -7,7 +7,7 @@ export class MenusPrismaRepository implements MenusRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   create(input: {
-    store_id: string;
+    place_id: string;
     name: string;
     reference_image_url: string;
     portion_grams?: number;
@@ -16,7 +16,7 @@ export class MenusPrismaRepository implements MenusRepository {
       data: input,
       select: {
         id: true,
-        store_id: true,
+        place_id: true,
         name: true,
         reference_image_url: true,
         portion_grams: true,
@@ -41,7 +41,7 @@ export class MenusPrismaRepository implements MenusRepository {
       where: { id: menu_id },
       select: {
         id: true,
-        store_id: true,
+        place_id: true,
         name: true,
         reference_image_url: true,
         portion_grams: true,
@@ -51,13 +51,13 @@ export class MenusPrismaRepository implements MenusRepository {
     });
   }
 
-  findMany(query: { store_id?: string }) {
+  findMany(query: { place_id?: string }) {
     return this.prisma.menu.findMany({
-      where: { store_id: query.store_id },
+      where: { place_id: query.place_id },
       orderBy: { created_at: 'desc' },
       select: {
         id: true,
-        store_id: true,
+        place_id: true,
         name: true,
         reference_image_url: true,
         portion_grams: true,
@@ -72,7 +72,7 @@ export class MenusPrismaRepository implements MenusRepository {
       where: { id: menu_id },
       select: {
         id: true,
-        store_id: true,
+        place_id: true,
         name: true,
         reference_image_url: true,
         portion_grams: true,

@@ -1,13 +1,13 @@
 export interface MenusRepository {
-  findById(menu_id: string): Promise<{ id: string; store_id: string } | null>;
+  findById(menu_id: string): Promise<{ id: string; place_id: string } | null>;
   create(input: {
-    store_id: string;
+    place_id: string;
     name: string;
     reference_image_url: string;
     portion_grams?: number;
   }): Promise<{
     id: string;
-    store_id: string;
+    place_id: string;
     name: string;
     reference_image_url: string;
     portion_grams: number | null;
@@ -23,17 +23,17 @@ export interface MenusRepository {
     },
   ): Promise<{
     id: string;
-    store_id: string;
+    place_id: string;
     name: string;
     reference_image_url: string;
     portion_grams: number | null;
     created_at: Date;
     updated_at: Date;
   } | null>;
-  findMany(query: { store_id?: string }): Promise<
+  findMany(query: { place_id?: string }): Promise<
     {
       id: string;
-      store_id: string;
+      place_id: string;
       name: string;
       reference_image_url: string;
       portion_grams: number | null;

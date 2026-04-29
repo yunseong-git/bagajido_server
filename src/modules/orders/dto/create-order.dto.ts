@@ -32,9 +32,10 @@ class CreateOrderItemDto {
 }
 
 export class CreateOrderDto {
-  @ApiProperty({ description: '매장 ID' })
-  @IsUUID()
-  store_id: string;
+  @ApiProperty({ description: '매장 place_id' })
+  @IsString()
+  @MaxLength(255)
+  place_id: string;
 
   @ApiProperty({ description: '총 주문 금액' })
   @Type(() => Number)

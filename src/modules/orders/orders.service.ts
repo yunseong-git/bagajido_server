@@ -11,7 +11,7 @@ export class OrdersService {
   create(user_id: string, input: CreateOrderDto) {
     return this.ordersRepository.create({
       user_id,
-      store_id: input.store_id,
+      place_id: input.place_id,
       total_amount: input.total_amount.toFixed(2),
       currency: input.currency,
       payment_status: input.payment_status,

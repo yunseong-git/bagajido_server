@@ -9,7 +9,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
 
   async create(input: {
     user_id: string;
-    store_id: string;
+    place_id: string;
     total_amount: string;
     currency: string;
     payment_status: string;
@@ -19,7 +19,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
     const created = await this.prisma.order.create({
       data: {
         user_id: input.user_id,
-        store_id: input.store_id,
+        place_id: input.place_id,
         total_amount: new Prisma.Decimal(input.total_amount),
         currency: input.currency,
         payment_status: input.payment_status,
@@ -35,7 +35,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
       select: {
         id: true,
         user_id: true,
-        store_id: true,
+        place_id: true,
         total_amount: true,
         currency: true,
         payment_status: true,
@@ -62,7 +62,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
       select: {
         id: true,
         user_id: true,
-        store_id: true,
+        place_id: true,
         total_amount: true,
         currency: true,
         payment_status: true,
@@ -73,14 +73,14 @@ export class OrdersPrismaRepository implements OrdersRepository {
     return row ? { ...row, total_amount: row.total_amount.toString() } : null;
   }
 
-  async findMany(query: { user_id?: string; store_id?: string }) {
+  async findMany(query: { user_id?: string; place_id?: string }) {
     const rows = await this.prisma.order.findMany({
-      where: { user_id: query.user_id, store_id: query.store_id },
+      where: { user_id: query.user_id, place_id: query.place_id },
       orderBy: { created_at: 'desc' },
       select: {
         id: true,
         user_id: true,
-        store_id: true,
+        place_id: true,
         total_amount: true,
         currency: true,
         payment_status: true,
@@ -97,7 +97,7 @@ export class OrdersPrismaRepository implements OrdersRepository {
       select: {
         id: true,
         user_id: true,
-        store_id: true,
+        place_id: true,
         total_amount: true,
         currency: true,
         payment_status: true,

@@ -1,11 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUrl, IsUUID, MaxLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 
 export class CreateMenuDto {
-  @ApiProperty({ description: '매장 ID' })
-  @IsUUID()
-  store_id: string;
+  @ApiProperty({ description: '매장 place_id (외부 API 등)' })
+  @IsString()
+  @MaxLength(255)
+  place_id: string;
 
   @ApiProperty({ description: '메뉴명' })
   @IsString()

@@ -1,8 +1,8 @@
 export interface OrdersRepository {
-  findById(order_id: string): Promise<{ id: string; user_id: string; store_id: string } | null>;
+  findById(order_id: string): Promise<{ id: string; user_id: string; place_id: string } | null>;
   create(input: {
     user_id: string;
-    store_id: string;
+    place_id: string;
     total_amount: string;
     currency: string;
     payment_status: string;
@@ -11,7 +11,7 @@ export interface OrdersRepository {
   }): Promise<{
     id: string;
     user_id: string;
-    store_id: string;
+    place_id: string;
     total_amount: string;
     currency: string;
     payment_status: string;
@@ -27,18 +27,18 @@ export interface OrdersRepository {
   ): Promise<{
     id: string;
     user_id: string;
-    store_id: string;
+    place_id: string;
     total_amount: string;
     currency: string;
     payment_status: string;
     external_payment_id: string | null;
     created_at: Date;
   } | null>;
-  findMany(query: { user_id?: string; store_id?: string }): Promise<
+  findMany(query: { user_id?: string; place_id?: string }): Promise<
     {
       id: string;
       user_id: string;
-      store_id: string;
+      place_id: string;
       total_amount: string;
       currency: string;
       payment_status: string;

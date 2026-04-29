@@ -50,17 +50,16 @@ model Owner {
   @@map("owners")
 }
 
-// 3. Store (클라이언트 렌더링용 간단 테이블 & 외부 API place_id 적용)
+// Store: 지도/목록용 요약 + 통계 컬럼(구 store_stats 테이블 제거 후 이 테이블에 통합)
 model Store {
   place_id         String      @id @db.VarChar(255) // 외부 API(구글맵/TourAPI 등) 고유 ID
   name             String      @db.VarChar(200)
   category         String?     @db.VarChar(100)
-  
-  // 2. 클러스터링 제외, 필요시 사용할 가벼운 위경도 좌표
+
   latitude         Decimal?    @db.Decimal(10, 7)
   longitude        Decimal?    @db.Decimal(10, 7)
 
-  // 통계 데이터 (기존 StoreStat 통합)
+  // 통계(이전 store_stats → stores 컬럼)
   avg_value_score  Decimal?    @db.Decimal(5, 2)
   review_count     Int         @default(0)
   like_count       Int         @default(0)
@@ -79,7 +78,7 @@ model Store {
   @@map("stores")
 }
 
-// 3. StoreDetail (상세 정보 테이블)
+// StoreDetail: 주소·사장(owner)·영업 정보 등(구 단일 stores 확장 필드는 여기로 분리)
 model StoreDetail {
   place_id         String      @id @db.VarChar(255)
   owner_id         String?     @db.Uuid // 외부 API 데이터라 사장님 미등록 상태일 수 있음

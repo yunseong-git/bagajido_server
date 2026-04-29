@@ -5,7 +5,6 @@ import { AuthModule } from './modules/auth/auth.module';
 import { MenusModule } from './modules/menus/menus.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
-import { StoreStatsModule } from './modules/store-stats/store-stats.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { UsersModule } from './modules/users/users.module';
 import { AppController } from './app.controller';
@@ -21,7 +20,6 @@ import { PrismaModule } from './prisma/prisma.module';
     MenusModule,
     OrdersModule,
     ReviewsModule,
-    StoreStatsModule,
     AuthModule,
     AiWebhookModule,
   ],

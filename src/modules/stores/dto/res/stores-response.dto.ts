@@ -18,7 +18,7 @@ export class StoreActionResponseDto {
 
 export class OwnerNoteResponseDto {
   @ApiProperty({ example: 'place_12345' })
-  store_id!: string;
+  place_id!: string;
 
   @ApiProperty({ example: 'owner-uuid' })
   owner_id!: string;
@@ -32,7 +32,7 @@ export class OwnerNoteResponseDto {
 
 export class AdminOnlyResponseDto {
   @ApiProperty({ example: 'place_12345' })
-  store_id!: string;
+  place_id!: string;
 
   @ApiProperty({ example: 'Roles(ADMIN) 인가 통과 예시' })
   message!: string;
