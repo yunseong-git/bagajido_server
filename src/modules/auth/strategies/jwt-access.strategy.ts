@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
-export type AccessJwtPayload = { sub?: string };
+export type AccessJwtPayload = { sub?: string; email?: string };
 
 @Injectable()
 export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -20,6 +20,9 @@ export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('Invalid Supabase JWT payload: missing sub');
     }
 
-    return { oauth_subject: payload.sub };
+    return {
+      oauth_subject: payload.sub,
+      email: payload.email ?? null,
+    };
   }
 }

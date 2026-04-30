@@ -21,6 +21,7 @@ model User {
   oauth_subject    String      @db.VarChar(255)
   email            String?     @db.VarChar(320)
   display_name     String?     @db.VarChar(100)
+  region           String?     @db.VarChar(100)
   created_at       DateTime    @default(now())
   updated_at       DateTime    @updatedAt
 

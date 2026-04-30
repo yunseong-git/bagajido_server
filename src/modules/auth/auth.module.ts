@@ -8,7 +8,6 @@ import { AuthService } from './services/auth.service';
 import { TokenStoreService } from './services/token-store.service';
 import { JwtAccessAuthGuard } from './guards/jwt-access-auth.guard';
 import { JwtAccessStrategy } from './strategies/jwt-access.strategy';
-import { AppOAuth2Strategy } from './strategies/oauth2.strategy';
 
 @Module({
   imports: [
@@ -28,7 +27,6 @@ import { AppOAuth2Strategy } from './strategies/oauth2.strategy';
     AuthService,
     TokenStoreService,
     JwtAccessStrategy,
-    AppOAuth2Strategy,
     JwtAccessAuthGuard,
   ],
   exports: [AuthService],

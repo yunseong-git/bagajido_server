@@ -8,7 +8,6 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import {
   ApiBearerAuth,
   ApiNoContentResponse,
@@ -20,27 +19,14 @@ import type { Request } from 'express';
 import { AuthService } from './services/auth.service';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAccessAuthGuard } from './guards/jwt-access-auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthMeResponseDto, AuthTokenPairResponseDto } from './dto/res/auth-response.dto';
+import { SyncUserDto } from './dto/sync-user.dto';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
-  @Get('oauth2/login')
-  @UseGuards(AuthGuard('oauth2'))
-  @ApiOperation({ summary: 'OAuth2 로그인 시작 (Passport 리다이렉트)' })
-  oauth2Login() {
-    /* Passport가 인가 URL로 리다이렉트 */
-  }
-
-  @Get('oauth2/callback')
-  @UseGuards(AuthGuard('oauth2'))
-  @ApiOperation({ summary: 'OAuth2 콜백 후 JWT 발급' })
-  @ApiOkResponse({ type: AuthTokenPairResponseDto })
-  async oauth2Callback(@Req() req: Request & { user: { id: string } }) {
-    return this.authService.issueTokens(req.user.id);
-  }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
@@ -65,5 +51,22 @@ export class AuthController {
   @ApiOkResponse({ type: AuthMeResponseDto })
   me(@Req() req: Request & { user: { oauth_subject: string } }) {
     return { oauth_subject: req.user.oauth_subject };
+  }
+
+  @Post('sync')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Supabase JWT 기반 사용자 동기화' })
+  async sync(
+    @Req() req: Request & { user: { oauth_subject: string; email?: string | null } },
+    @Body() body: SyncUserDto,
+  ) {
+    return this.authService.syncUser(
+      {
+        oauth_subject: req.user.oauth_subject,
+        email: req.user.email ?? null,
+      },
+      body,
+    );
   }
 }

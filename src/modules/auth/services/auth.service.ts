@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
 import { TokenStoreService } from './token-store.service';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { SyncUserDto } from '../dto/sync-user.dto';
 
 @Injectable()
 export class AuthService {
@@ -10,6 +12,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly tokenStore: TokenStoreService,
+    private readonly prisma: PrismaService,
   ) {}
 
   private accessTtlSeconds() {
@@ -79,5 +82,35 @@ export class AuthService {
     } catch {
       /* ignore invalid token on logout */
     }
+  }
+
+  async syncUser(
+    payload: { oauth_subject: string; email?: string | null },
+    dto: SyncUserDto,
+  ) {
+    const existing = await this.prisma.user.findFirst({
+      where: { oauth_subject: payload.oauth_subject },
+    });
+
+    if (!existing) {
+      return this.prisma.user.create({
+        data: {
+          oauth_provider: 'supabase',
+          oauth_subject: payload.oauth_subject,
+          email: payload.email ?? undefined,
+          display_name: dto.nickname ?? undefined,
+          region: dto.region ?? undefined,
+        },
+      });
+    }
+
+    return this.prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        email: payload.email ?? undefined,
+        display_name: dto.nickname ?? undefined,
+        region: dto.region ?? undefined,
+      },
+    });
   }
 }
