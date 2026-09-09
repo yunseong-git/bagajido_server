@@ -12,25 +12,17 @@ import { PlacesModule } from './modules/places/places.module';
 import { VisitsModule } from './modules/visits/visits.module';
 
 @Module({
-  imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
+    imports: [
+        ConfigModule.forRoot({ isGlobal: true }),
 
-    PrismaModule,
+        PrismaModule,
 
-    AuthModule,
-    UsersModule,
-    PlacesModule,
-    VisitsModule,
-  ],
-
-  controllers: [
-    AppController,
-  ],
-
-  providers: [
-    AppService,
-  ],
+        AuthModule,
+        UsersModule,
+        PlacesModule,
+        VisitsModule,
+    ],
+    controllers: [AppController],
+    providers: [AppService],
 })
 export class AppModule {}

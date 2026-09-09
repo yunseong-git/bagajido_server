@@ -1,10 +1,6 @@
-import {
-    VisitExperienceType,
-    VisitVerificationType,
-    VisitorType,
-} from '@prisma/client';
+import { VisitExperienceType, VisitVerificationType, VisitorType } from '@prisma/client';
 
-import type { VisitWithRelations, } from './types/visit-with-relations.type';
+import type { VisitWithRelations } from './types/visit-with-relations.type';
 
 export interface CreateVisitInput {
     userId: string;
@@ -13,26 +9,17 @@ export interface CreateVisitInput {
     visitedOn: Date;
     visitedAt?: Date | null;
 
-    experienceType:
-    VisitExperienceType;
-
-    visitorType:
-    VisitorType;
-
-    verificationType:
-    VisitVerificationType;
+    experienceType: VisitExperienceType;
+    visitorType: VisitorType;
+    verificationType: VisitVerificationType;
 }
 
 export interface UpdateVisitInput {
     visitedOn?: Date;
-
     visitedAt?: Date | null;
 
-    experienceType?:
-    VisitExperienceType;
-
-    visitorType?:
-    VisitorType;
+    experienceType?: VisitExperienceType;
+    visitorType?: VisitorType;
 }
 
 export interface FindMyVisitsInput {
@@ -48,15 +35,14 @@ export interface FindMyVisitsInput {
 }
 
 export interface VisitsRepository {
-    create(input: CreateVisitInput,): Promise<VisitWithRelations>;
+    create(input: CreateVisitInput): Promise<VisitWithRelations>;
 
-    findByIdAndUserId(visitId: string, userId: string,): Promise<VisitWithRelations | null>;
+    findByIdAndUserId(visitId: string, userId: string): Promise<VisitWithRelations | null>;
 
-    findManyByUserId(input: FindMyVisitsInput,)
-        : Promise<{
-            items: VisitWithRelations[];
-            total: number;
-        }>;
+    findManyByUserId(input: FindMyVisitsInput): Promise<{
+        items: VisitWithRelations[];
+        total: number;
+    }>;
 
-    updateById(visitId: string, input: UpdateVisitInput,): Promise<VisitWithRelations>;
+    updateById(visitId: string, input: UpdateVisitInput): Promise<VisitWithRelations>;
 }

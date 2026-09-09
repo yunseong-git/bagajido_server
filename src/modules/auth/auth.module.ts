@@ -3,15 +3,9 @@ import { Module } from '@nestjs/common';
 import { SupabaseAuthGuard } from './guards/supabase-auth.guard';
 import { AuthService } from './services/auth.service';
 
-//Jwt나 Passport랑 토큰로직 같은거 깔끔하게 제거, Auth → Users 의존성없음, 따라서 순환의존성 제거
+// Jwt / Passport 토큰 로직을 직접 두지 않고, Auth는 Users에 의존하지 않는다. (순환 의존성 제거)
 @Module({
-  providers: [
-    AuthService,
-    SupabaseAuthGuard,
-  ],
-  exports: [
-    AuthService,
-    SupabaseAuthGuard,
-  ],
+    providers: [AuthService, SupabaseAuthGuard],
+    exports: [AuthService, SupabaseAuthGuard],
 })
 export class AuthModule {}

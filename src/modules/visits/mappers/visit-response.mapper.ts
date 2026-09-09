@@ -1,12 +1,10 @@
-import { VisitResponseDto, } from '../dto/res/visit-response.dto';
+import { VisitResponseDto } from '../dto/res/visit-response.dto';
 
-import type { VisitWithRelations, } from '../types/visit-with-relations.type';
+import type { VisitWithRelations } from '../types/visit-with-relations.type';
 
-import { formatDateOnly, } from '../utils/visit-date.util';
+import { formatDateOnly } from '../utils/visit-date.util';
 
-export function toVisitResponse(
-    visit: VisitWithRelations,
-): VisitResponseDto {
+export function toVisitResponse(visit: VisitWithRelations): VisitResponseDto {
     return {
         id: visit.id,
         place: {
@@ -23,7 +21,7 @@ export function toVisitResponse(
                 }
                 : null,
         },
-        visitedOn: formatDateOnly(visit.visitedOn,),
+        visitedOn: formatDateOnly(visit.visitedOn),
         visitedAt: visit.visitedAt,
         experienceType: visit.experienceType,
         visitorType: visit.visitorType,

@@ -19,7 +19,7 @@ export class VisitPlaceResponseDto {
     address!: string | null;
     status!: PlaceStatus;
 
-    category!: | VisitPlaceCategoryResponseDto | null;
+    category!: VisitPlaceCategoryResponseDto | null;
 }
 
 export class VisitResponseDto {

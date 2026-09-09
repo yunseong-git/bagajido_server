@@ -9,22 +9,16 @@ export const visitInclude = {
             status: true,
 
             category: {
-                select: {
-                    id: true,
-                    key: true,
-                    nameKo: true,
-                    nameEn: true,
-                },
+                select: { id: true, key: true, nameKo: true, nameEn: true },
             },
         },
     },
 
     rating: {
-        select: { id: true, },
+        select: { id: true },
     },
 } satisfies Prisma.PlaceVisitInclude;
 
-export type VisitWithRelations =
-    Prisma.PlaceVisitGetPayload<{
-        include: typeof visitInclude;
-    }>;
+export type VisitWithRelations = Prisma.PlaceVisitGetPayload<{
+    include: typeof visitInclude;
+}>;
