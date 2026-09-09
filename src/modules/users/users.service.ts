@@ -1,34 +1,275 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+
+import {
+  Prisma,
+  User,
+  UserStatus,
+} from '@prisma/client';
+
+import { CreateUserDto } from './dto/req/create-user.dto';
+import { UpdateUserDto } from './dto/req/update-user.dto';
+
+import type { UserResponseDto } from './dto/res/user-response.dto';
+import type { CurrentUser } from './types/current-user.type';
+
 import { UsersPrismaRepository } from './users.repository';
-import type { UpsertOAuthUserInput } from './users.repository.interface';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly usersRepository: UsersPrismaRepository) {}
+  constructor(
+    private readonly usersRepository:
+      UsersPrismaRepository,
+  ) { }
 
-  // 1. 기존 upsert 로직 (Repository와 연결)
-  async upsertFromOAuth(input: UpsertOAuthUserInput) {
-    return await this.usersRepository.upsertFromOAuth(input);
+  /**
+   * createMe나 updateMe에서 findByUsername()을 먼저 해도
+    P2002 처리를 또 하는 이유? 동시 요청 race condition 처리위함.
+
+    예시)
+    요청 A username 조회 → 없음
+    요청 B username 조회 → 없음
+
+    A INSERT 성공
+    B INSERT 시도
+    
+    → DB UNIQUE가 최종 방어
+    → Prisma P2002
+   */
+
+
+  async createMe(
+    authUserId: string,
+    dto: CreateUserDto,
+  ): Promise<UserResponseDto> {
+    const [
+      existingAuthUser,
+      existingUsername,
+    ] = await Promise.all([
+      this.usersRepository.findByAuthUserId(
+        authUserId,
+      ),
+      this.usersRepository.findByUsername(
+        dto.username,
+      ),
+    ]);
+
+    if (existingAuthUser) {
+      throw new ConflictException(
+        'USER_ALREADY_REGISTERED',
+      );
+    }
+
+    if (existingUsername) {
+      throw new ConflictException(
+        'USERNAME_ALREADY_TAKEN',
+      );
+    }
+
+    try {
+      const user =
+        await this.usersRepository.create({
+          authUserId,
+          username: dto.username,
+          displayName: dto.displayName,
+          bio: dto.bio,
+          nationalityCode:
+            dto.nationalityCode,
+          residenceCountryCode:
+            dto.residenceCountryCode,
+          preferredLocale:
+            dto.preferredLocale,
+        });
+
+      return this.toResponse(user);
+    } catch (error) {
+      this.handleUniqueConstraint(error);
+
+      throw error;
+    }
   }
 
-  // 2. Auth 모듈에서 호출할 유저 동기화 브릿지
-  async syncUserWithAuth(authPayload: any) {
-    // Supabase나 타 OAuth에서 준 raw 데이터를 우리 규격에 맞게 정제
-    return await this.upsertFromOAuth({
-      oauth_provider: authPayload.provider || 'oauth2',
-      oauth_subject: authPayload.sub || authPayload.id,
-      email: authPayload.email,
-      display_name: authPayload.full_name || authPayload.name,
-    });
+  async getMe(
+    authUserId: string,
+  ): Promise<UserResponseDto> {
+    const user =
+      await this.usersRepository.findByAuthUserId(
+        authUserId,
+      );
+
+    if (!user) {
+      throw new NotFoundException(
+        'USER_PROFILE_NOT_FOUND',
+      );
+    }
+
+    return this.toResponse(user);
   }
 
-  async createRandomTestUser() {
-    const randomId = Math.random().toString(36).substring(7);
-    return await this.upsertFromOAuth({
-      oauth_provider: 'test',
-      oauth_subject: `test-sub-random-${randomId}`,
-      email: `random-${randomId}@bagajido.test`,
-      display_name: `신규사냥꾼-${randomId}`,
-    });
+  async updateMe(
+    authUserId: string,
+    dto: UpdateUserDto,
+  ): Promise<UserResponseDto> {
+    const user =
+      await this.usersRepository.findByAuthUserId(
+        authUserId,
+      );
+
+    if (!user) {
+      throw new NotFoundException(
+        'USER_PROFILE_NOT_FOUND',
+      );
+    }
+
+    if (
+      dto.username &&
+      dto.username !== user.username
+    ) {
+      const usernameOwner =
+        await this.usersRepository.findByUsername(
+          dto.username,
+        );
+
+      if (
+        usernameOwner &&
+        usernameOwner.id !== user.id
+      ) {
+        throw new ConflictException(
+          'USERNAME_ALREADY_TAKEN',
+        );
+      }
+    }
+
+    try {
+      const updatedUser =
+        await this.usersRepository.updateById(
+          user.id,
+          {
+            username: dto.username,
+            displayName: dto.displayName,
+            bio: dto.bio,
+            nationalityCode:
+              dto.nationalityCode,
+            residenceCountryCode:
+              dto.residenceCountryCode,
+            preferredLocale:
+              dto.preferredLocale,
+          },
+        );
+
+      return this.toResponse(updatedUser);
+    } catch (error) {
+      this.handleUniqueConstraint(error);
+
+      throw error;
+    }
+  }
+
+  async getCurrentUser(
+    authUserId: string,
+  ): Promise<CurrentUser> {
+    const user =
+      await this.usersRepository.findByAuthUserId(
+        authUserId,
+      );
+
+    if (!user) {
+      throw new ForbiddenException(
+        'USER_ONBOARDING_REQUIRED',
+      );
+    }
+
+    if (
+      user.status === UserStatus.SUSPENDED
+    ) {
+      throw new ForbiddenException(
+        'USER_SUSPENDED',
+      );
+    }
+
+    if (
+      user.status === UserStatus.WITHDRAWN
+    ) {
+      throw new ForbiddenException(
+        'USER_WITHDRAWN',
+      );
+    }
+
+    return {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      status: user.status,
+    };
+  }
+
+  private toResponse(
+    user: User,
+  ): UserResponseDto {
+    return {
+      id: user.id,
+
+      username: user.username,
+      displayName: user.displayName,
+      bio: user.bio,
+
+      profileImageKey:
+        user.profileImageKey,
+
+      nationalityCode:
+        user.nationalityCode,
+
+      residenceCountryCode:
+        user.residenceCountryCode,
+
+      preferredLocale:
+        user.preferredLocale,
+
+      role: user.role,
+      status: user.status,
+      withdrawnAt: user.withdrawnAt,
+
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+
+  private handleUniqueConstraint(
+    error: unknown,
+  ): void {
+    if (
+      !(
+        error instanceof
+        Prisma.PrismaClientKnownRequestError
+      ) ||
+      error.code !== 'P2002'
+    ) {
+      return;
+    }
+
+    const target =
+      JSON.stringify(
+        error.meta?.target ?? '',
+      );
+
+    if (target.includes('username')) {
+      throw new ConflictException(
+        'USERNAME_ALREADY_TAKEN',
+      );
+    }
+
+    if (target.includes('authUserId')) {
+      throw new ConflictException(
+        'USER_ALREADY_REGISTERED',
+      );
+    }
+
+    throw new ConflictException(
+      'USER_UNIQUE_CONSTRAINT',
+    );
   }
 }

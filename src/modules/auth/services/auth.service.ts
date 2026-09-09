@@ -1,116 +1,86 @@
+// autoRefreshToken, persistSession, detectSessionInUrl는 꺼둔다.
+// Nest가 세션의 주인이 아닌 Supabase가 세션의 주인임
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import { randomUUID } from 'node:crypto';
-import { TokenStoreService } from './token-store.service';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { SyncUserDto } from '../dto/sync-user.dto';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+import type { AuthUser } from '../types/auth-user.type';
 
 @Injectable()
 export class AuthService {
-  constructor(
-    private readonly jwtService: JwtService,
-    private readonly config: ConfigService,
-    private readonly tokenStore: TokenStoreService,
-    private readonly prisma: PrismaService,
-  ) {}
+  private readonly supabase: SupabaseClient;
 
-  private accessTtlSeconds() {
-    return this.config.get<number>('JWT_ACCESS_TTL_SECONDS', 900);
-  }
+  constructor(private readonly configService: ConfigService) {
+    const supabaseUrl =
+      this.configService.getOrThrow<string>('SUPABASE_URL');
 
-  private refreshTtlSeconds() {
-    return this.config.get<number>('JWT_REFRESH_TTL_SECONDS', 604800);
-  }
+    const supabasePublishableKey =
+      this.configService.getOrThrow<string>('SUPABASE_PUBLISHABLE_KEY');
 
-  async issueTokens(user_id: string) {
-    const access_secret = this.config.getOrThrow<string>('JWT_ACCESS_SECRET');
-    const refresh_secret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
-    const jti = randomUUID();
-    const access_ttl = this.accessTtlSeconds();
-    const refresh_ttl = this.refreshTtlSeconds();
-
-    const [access_token, refresh_token] = await Promise.all([
-      this.jwtService.signAsync(
-        { sub: user_id },
-        { secret: access_secret, expiresIn: access_ttl },
-      ),
-      this.jwtService.signAsync(
-        { sub: user_id, jti },
-        { secret: refresh_secret, expiresIn: refresh_ttl },
-      ),
-    ]);
-
-    await this.tokenStore.saveRefreshJti(jti, user_id, refresh_ttl);
-    return { access_token, refresh_token, token_type: 'Bearer' as const };
-  }
-
-  async rotateRefreshToken(refresh_token: string) {
-    const refresh_secret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
-    let payload: { sub?: string; jti?: string };
-    try {
-      payload = await this.jwtService.verifyAsync<{ sub: string; jti: string }>(
-        refresh_token,
-        { secret: refresh_secret },
-      );
-    } catch {
-      throw new UnauthorizedException('invalid_refresh_token');
-    }
-    if (!payload.sub || !payload.jti) {
-      throw new UnauthorizedException('invalid_refresh_token');
-    }
-    const stored_user_id = await this.tokenStore.getUserIdForRefreshJti(
-      payload.jti,
-    );
-    if (!stored_user_id || stored_user_id !== payload.sub) {
-      throw new UnauthorizedException('refresh_token_revoked');
-    }
-    await this.tokenStore.revokeRefreshJti(payload.jti);
-    return this.issueTokens(payload.sub);
-  }
-
-  async logout(refresh_token: string) {
-    const refresh_secret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
-    try {
-      const payload = await this.jwtService.verifyAsync<{ jti: string }>(
-        refresh_token,
-        { secret: refresh_secret },
-      );
-      if (payload.jti) {
-        await this.tokenStore.revokeRefreshJti(payload.jti);
-      }
-    } catch {
-      /* ignore invalid token on logout */
-    }
-  }
-
-  async syncUser(
-    payload: { oauth_subject: string; email?: string | null },
-    dto: SyncUserDto,
-  ) {
-    const existing = await this.prisma.user.findFirst({
-      where: { oauth_subject: payload.oauth_subject },
-    });
-
-    if (!existing) {
-      return this.prisma.user.create({
-        data: {
-          oauth_provider: 'supabase',
-          oauth_subject: payload.oauth_subject,
-          email: payload.email ?? undefined,
-          display_name: dto.nickname ?? undefined,
-          region: dto.region ?? undefined,
+    this.supabase = createClient(
+      supabaseUrl,
+      supabasePublishableKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+          detectSessionInUrl: false,
         },
-      });
+      },
+    );
+  }
+
+  async authenticateAuthorizationHeader(
+    authorization?: string,
+  ): Promise<AuthUser> {
+    const accessToken = this.extractBearerToken(authorization);
+
+    return this.verifyAccessToken(accessToken);
+  }
+
+  async verifyAccessToken(accessToken: string): Promise<AuthUser> {
+    try {
+      const { data, error } =
+        await this.supabase.auth.getClaims(accessToken);
+
+      if (error || !data?.claims?.sub) {
+        throw new UnauthorizedException('INVALID_ACCESS_TOKEN');
+      }
+
+      const email =
+        typeof data.claims.email === 'string'
+          ? data.claims.email
+          : null;
+
+      return {
+        authUserId: data.claims.sub,
+        email,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      throw new UnauthorizedException('INVALID_ACCESS_TOKEN');
+    }
+  }
+
+  private extractBearerToken(authorization?: string): string {
+    if (!authorization) {
+      throw new UnauthorizedException('ACCESS_TOKEN_REQUIRED');
     }
 
-    return this.prisma.user.update({
-      where: { id: existing.id },
-      data: {
-        email: payload.email ?? undefined,
-        display_name: dto.nickname ?? undefined,
-        region: dto.region ?? undefined,
-      },
-    });
+    const [scheme, token] = authorization.trim().split(/\s+/);
+
+    if (
+      scheme?.toLowerCase() !== 'bearer' ||
+      !token
+    ) {
+      throw new UnauthorizedException(
+        'INVALID_AUTHORIZATION_HEADER',
+      );
+    }
+
+    return token;
   }
 }

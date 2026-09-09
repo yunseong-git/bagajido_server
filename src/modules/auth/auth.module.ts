@@ -1,34 +1,17 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
-import { UsersModule } from '../users/users.module';
-import { AuthController } from './auth.controller';
-import { AuthService } from './services/auth.service';
-import { TokenStoreService } from './services/token-store.service';
-import { JwtAccessAuthGuard } from './guards/jwt-access-auth.guard';
-import { JwtAccessStrategy } from './strategies/jwt-access.strategy';
 
+import { SupabaseAuthGuard } from './guards/supabase-auth.guard';
+import { AuthService } from './services/auth.service';
+
+//Jwt나 Passport랑 토큰로직 같은거 깔끔하게 제거, Auth → Users 의존성없음, 따라서 순환의존성 제거
 @Module({
-  imports: [
-    ConfigModule,
-    UsersModule,
-    PassportModule.register({ session: false, defaultStrategy: 'jwt' }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
-      }),
-    }),
-  ],
-  controllers: [AuthController],
   providers: [
     AuthService,
-    TokenStoreService,
-    JwtAccessStrategy,
-    JwtAccessAuthGuard,
+    SupabaseAuthGuard,
   ],
-  exports: [AuthService],
+  exports: [
+    AuthService,
+    SupabaseAuthGuard,
+  ],
 })
 export class AuthModule {}

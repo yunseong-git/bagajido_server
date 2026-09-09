@@ -1,31 +1,94 @@
 import { Injectable } from '@nestjs/common';
+import type { User } from '@prisma/client';
+
 import { PrismaService } from '../../prisma/prisma.service';
-import type { UpsertOAuthUserInput, UsersRepository } from './users.repository.interface';
+
+import type {
+  CreateUserInput,
+  UpdateUserInput,
+  UsersRepository,
+} from './users.repository.interface';
 
 @Injectable()
-export class UsersPrismaRepository implements UsersRepository {
-  constructor(private readonly prisma: PrismaService) {}
+export class UsersPrismaRepository
+  implements UsersRepository
+{
+  constructor(
+    private readonly prisma: PrismaService,
+  ) {}
 
-  async upsertFromOAuth(input: UpsertOAuthUserInput): Promise<{ id: string }> {
-    const row = await this.prisma.user.upsert({
+  findById(
+    id: string,
+  ): Promise<User | null> {
+    return this.prisma.user.findUnique({
       where: {
-        oauth_provider_oauth_subject: {
-          oauth_provider: input.oauth_provider,
-          oauth_subject: input.oauth_subject,
-        },
+        id,
       },
-      create: {
-        oauth_provider: input.oauth_provider,
-        oauth_subject: input.oauth_subject,
-        email: input.email ?? undefined,
-        display_name: input.display_name ?? undefined,
-      },
-      update: {
-        email: input.email ?? undefined,
-        display_name: input.display_name ?? undefined,
-      },
-      select: { id: true },
     });
-    return { id: row.id };
+  }
+
+  findByAuthUserId(
+    authUserId: string,
+  ): Promise<User | null> {
+    return this.prisma.user.findUnique({
+      where: {
+        authUserId,
+      },
+    });
+  }
+
+  findByUsername(
+    username: string,
+  ): Promise<User | null> {
+    return this.prisma.user.findUnique({
+      where: {
+        username,
+      },
+    });
+  }
+
+  create(
+    input: CreateUserInput,
+  ): Promise<User> {
+    return this.prisma.user.create({
+      data: {
+        authUserId: input.authUserId,
+        username: input.username,
+        displayName: input.displayName,
+
+        bio: input.bio,
+        nationalityCode:
+          input.nationalityCode,
+        residenceCountryCode:
+          input.residenceCountryCode,
+        preferredLocale:
+          input.preferredLocale,
+      },
+    });
+  }
+
+  updateById(
+    id: string,
+    input: UpdateUserInput,
+  ): Promise<User> {
+    return this.prisma.user.update({
+      where: {
+        id,
+      },
+      data: {
+        username: input.username,
+        displayName: input.displayName,
+
+        bio: input.bio,
+
+        nationalityCode:
+          input.nationalityCode,
+        residenceCountryCode:
+          input.residenceCountryCode,
+
+        preferredLocale:
+          input.preferredLocale,
+      },
+    });
   }
 }

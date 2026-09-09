@@ -1,79 +1,132 @@
-import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
-import { UserRole } from '../auth/types/user-role.type';
+import {
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+
+import { CurrentAuthUser } from '../auth/decorators/current-auth-user.decorator';
+import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
+import type { AuthUser } from '../auth/types/auth-user.type';
+
+import { CreateUserDto } from './dto/req/create-user.dto';
+import { UpdateUserDto } from './dto/req/update-user.dto';
+import { UserResponseDto } from './dto/res/user-response.dto';
+
 import { UsersService } from './users.service';
-import { JwtAccessAuthGuard } from '../auth/guards/jwt-access-auth.guard';
-import { TestLoginDto } from './dto/test-login.dto';
-import { StoresService } from '../stores/stores.service';
-import { Roles } from '../auth/decorators/roles.decorator';
-import {
-  UserEntityResponseDto,
-  UserProfileResponseDto,
-  UserStoreListItemResponseDto,
-} from './dto/res/users-response.dto';
 
 @ApiTags('users')
+@ApiBearerAuth('access-token')
 @Controller('users')
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
-    private readonly storesService: StoresService,
   ) {}
 
-  @Post('test-login')
-  @ApiOperation({ summary: '개발용 테스트 로그인 (기존/신규 선택)' })
-  @ApiCreatedResponse({ type: UserEntityResponseDto })
-  async testLogin(@Body() body: TestLoginDto) {
-    // 1. 이메일이 들어오지 않은 경우 -> 완전 새로운 랜덤 유저 생성
-    if (!body || !body.email) {
-      return await this.usersService.createRandomTestUser();
-    }
+  @Post('me')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiOperation({
+    summary: 'Bagajido 사용자 프로필 생성',
+    description:
+      'Supabase Auth 회원가입 이후 Bagajido User를 생성합니다.',
+  })
+  @ApiCreatedResponse({
+    type: UserResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Supabase Access Token이 없거나 유효하지 않음',
+  })
+  @ApiConflictResponse({
+    description:
+      '이미 등록된 사용자 또는 중복 username',
+  })
+  createMe(
+    @CurrentAuthUser()
+    authUser: AuthUser,
 
-    // 2. 이메일이 들어온 경우 -> 기존 유저는 로그인, 없으면 해당 이메일로 생성 (Upsert)
-    return await this.usersService.upsertFromOAuth({
-      oauth_provider: 'test',
-      oauth_subject: `test-sub-${body.email}`,
-      email: body.email,
-      display_name: body.name || '기존테스트유저',
-    });
+    @Body()
+    dto: CreateUserDto,
+  ) {
+    return this.usersService.createMe(
+      authUser.authUserId,
+      dto,
+    );
   }
 
   @Get('me')
-  @UseGuards(JwtAccessAuthGuard)
-  @Roles(UserRole.USER, UserRole.ADMIN)
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: '내 프로필 조회' })
-  @ApiOkResponse({ type: UserProfileResponseDto })
-  async getMyProfile(
-    @Req() req: Request & { userEntity: { id: string; role: UserRole } }
+  @UseGuards(SupabaseAuthGuard)
+  @ApiOperation({
+    summary: '내 Bagajido 프로필 조회',
+  })
+  @ApiOkResponse({
+    type: UserResponseDto,
+  })
+  @ApiUnauthorizedResponse()
+  @ApiNotFoundResponse({
+    description:
+      'Supabase 로그인은 되어 있지만 Bagajido 프로필이 아직 없음',
+  })
+  getMe(
+    @CurrentAuthUser()
+    authUser: AuthUser,
   ) {
-    return { user: req.userEntity };
+    return this.usersService.getMe(
+      authUser.authUserId,
+    );
   }
 
-  @Get('me/liked-stores')
-  @UseGuards(JwtAccessAuthGuard)
-  @Roles(UserRole.USER, UserRole.ADMIN)
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: '내가 좋아요한 가게 목록 조회' })
-  @ApiOkResponse({ type: [UserStoreListItemResponseDto] })
-  async getMyLikedStores(@Req() req: Request & { userEntity: { id: string } }) {
-    return this.storesService.findMyLikedStores(req.userEntity.id);
-  }
+  @Patch('me')
+  @UseGuards(SupabaseAuthGuard)
+  @ApiOperation({
+    summary: '내 Bagajido 프로필 수정',
+  })
+  @ApiOkResponse({
+    type: UserResponseDto,
+  })
+  @ApiUnauthorizedResponse()
+  @ApiNotFoundResponse()
+  @ApiConflictResponse({
+    description:
+      '변경하려는 username이 이미 사용 중',
+  })
+  updateMe(
+    @CurrentAuthUser()
+    authUser: AuthUser,
 
-  @Get('me/picked-stores')
-  @UseGuards(JwtAccessAuthGuard)
-  @Roles(UserRole.USER, UserRole.ADMIN)
-  @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: '내가 찜한 가게 목록 조회' })
-  @ApiOkResponse({ type: [UserStoreListItemResponseDto] })
-  async getMyPickedStores(@Req() req: Request & { userEntity: { id: string } }) {
-    return this.storesService.findMyPickedStores(req.userEntity.id);
+    @Body()
+    dto: UpdateUserDto,
+  ) {
+    return this.usersService.updateMe(
+      authUser.authUserId,
+      dto,
+    );
   }
 }
+
+/** 초기 로그인 흐름
+ * 
+ * Supabase 로그인
+ * ↓
+ * GET /users/me
+
+ * 200 → 이미 Bagajido 가입 완료
+
+ * 404 USER_PROFILE_NOT_FOUND
+ * → 온보딩 화면 표시
+ * → username/displayName 입력
+ * → POST /users/me
+ */

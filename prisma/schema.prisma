@@ -1,3 +1,49 @@
+// ============================================================================
+// Bagajido MVP Prisma Schema v1.0
+// ============================================================================
+//
+// 서비스 정의:
+//   단방향 팔로우 기능이 있는 장소 기반 Wiki + SNS
+//
+// 현재 확정 도메인:
+//   - User
+//   - Place / PlaceCategory / PlaceExternalSource
+//   - PlaceVisit
+//   - PlaceRating / RatingMetric
+//   - PlaceComment / CommentLike
+//   - Moment / MomentLike
+//   - WikiSection / WikiRevision
+//   - UserFollow / FollowReason
+//   - Record / RecordMoment
+//
+// Diary:
+//   별도 DB Entity를 만들지 않음.
+//   User에 연결된 Visit / Moment / Record / Comment / Rating 등을 조합하는
+//   Product / View 개념으로 유지함.
+//
+// 아직 포함하지 않은 후속 도메인:
+//   - PlaceSave
+//   - SearchHistory
+//   - UserActivityEvent / RecommendationLog
+//   - Report
+//   - Notification
+//
+// 주요 설계 원칙:
+//   1. Bagajido User / Place는 외부 서비스와 독립적인 자체 UUID를 사용함.
+//   2. Supabase Auth와 TourAPI는 외부 연결 대상이지 도메인 PK의 주인이 아님.
+//   3. Place 폐업/운영종료는 물리 삭제 대신 ARCHIVED로 보존함.
+//   4. User의 LOCAL 여부는 고정 속성이 아니라 PlaceVisit 당시의 관계임.
+//   5. Rating은 실제 PlaceVisit에 필수 종속함.
+//   6. Comment / Moment는 PlaceVisit 연결이 optional임.
+//   7. Wiki Revision은 immutable history로 취급함.
+//   8. Moment는 하나의 순간, Record는 여러 Moment를 엮은 기록임.
+//   9. followerCount / likeCount / hot 여부 등의 집계/랭킹 값은 MVP 원본 테이블에
+//      중복 저장하지 않고 필요 시 후속 Statistics / Cache 계층으로 분리함.
+//
+// Prisma ORM v7 기준:
+//   DB connection URL은 prisma.config.ts에서 관리하는 전제를 사용함.
+// ============================================================================
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,212 +54,897 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// 1. User 역할 관리를 위한 Enum 추가
+// ENUMS - USER
+// ============================================================================
+
 enum UserRole {
   USER
+  MODERATOR
   ADMIN
 }
 
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+}
+
+// ============================================================================
+// ENUMS - PLACE
+// ============================================================================
+
+enum PlaceStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum PlaceExternalProvider {
+  TOUR_API
+  INTERNAL
+}
+
+// ============================================================================
+// ENUMS - VISIT
+// ============================================================================
+
+enum VisitExperienceType {
+  VISIT_ONLY
+  FREE_EXPERIENCE
+  PAID_EXPERIENCE
+}
+
+enum VisitorType {
+  UNKNOWN
+  LOCAL
+  DOMESTIC_VISITOR
+  INTERNATIONAL_VISITOR
+}
+
+enum VisitVerificationType {
+  SELF_REPORTED
+  LOCATION
+  RECEIPT
+  BOOKING
+  ADMIN
+}
+
+// ============================================================================
+// ENUMS - RATING
+// ============================================================================
+
+enum RatingMetricDirection {
+  HIGHER_IS_BETTER
+  HIGHER_IS_WORSE
+}
+
+// ============================================================================
+// ENUMS - COMMENT
+// ============================================================================
+
+enum CommentStatus {
+  ACTIVE
+  DELETED
+  HIDDEN
+}
+
+// ============================================================================
+// ENUMS - MOMENT
+// ============================================================================
+
+enum StorageProvider {
+  S3
+  R2
+}
+
+enum MomentStatus {
+  ACTIVE
+  DELETED
+  HIDDEN
+}
+
+// ============================================================================
+// ENUMS - WIKI
+// ============================================================================
+
+enum WikiSectionStatus {
+  ACTIVE
+  DELETED
+  HIDDEN
+}
+
+enum WikiRevisionType {
+  CREATE
+  EDIT
+  ROLLBACK
+}
+
+// ============================================================================
+// ENUMS - RECORD
+// ============================================================================
+
+enum RecordStatus {
+  DRAFT
+  PUBLISHED
+  DELETED
+  HIDDEN
+}
+
+enum RecordVisibility {
+  PUBLIC
+  FOLLOWERS
+  PRIVATE
+}
+
+// ============================================================================
+// USER
+// ============================================================================
+
 model User {
-  id               String      @id @default(uuid()) @db.Uuid
-  role             UserRole    @default(USER) // 관리자/일반유저 구분
-  oauth_provider   String      @db.VarChar(32)
-  oauth_subject    String      @db.VarChar(255)
-  email            String?     @db.VarChar(320)
-  display_name     String?     @db.VarChar(100)
-  region           String?     @db.VarChar(100)
-  created_at       DateTime    @default(now())
-  updated_at       DateTime    @updatedAt
+  // Bagajido 자체 User UUID.
+  // Supabase auth.users.id를 PK로 직접 사용하지 않음.
+  id String @id @default(uuid()) @db.Uuid
 
-  orders           Order[]
-  reviews          Review[]
-  store_likes      StoreLike[]
-  store_picks      StorePick[]
+  // Supabase auth.users.id 연결용 외부 인증 식별자.
+  // 실제 auth schema FK는 필요 시 SQL migration으로 추가함.
+  authUserId String? @unique @db.Uuid
 
-  @@unique([oauth_provider, oauth_subject], map: "users_oauth_provider_oauth_subject_key")
+  // @username 검색 및 프로필 handle.
+  username    String  @unique @db.VarChar(30)
+  displayName String  @db.VarChar(50)
+  bio         String? @db.VarChar(500)
+
+  // S3/R2 전체 URL이 아니라 object key만 저장함.
+  profileImageKey String?
+
+  // ISO 3166-1 alpha-2 국가코드 사용 전제.
+  nationalityCode      String? @db.Char(2)
+  residenceCountryCode String? @db.Char(2)
+
+  // 예: ko-KR, en-US, ja-JP
+  preferredLocale String @default("ko-KR") @db.VarChar(10)
+
+  role        UserRole   @default(USER)
+  status      UserStatus @default(ACTIVE)
+  withdrawnAt DateTime?  @db.Timestamptz(6)
+
+  // User 활동 Relations
+  visits       PlaceVisit[]
+  comments     PlaceComment[]
+  commentLikes CommentLike[]
+  moments      Moment[]
+  momentLikes  MomentLike[]
+  records      Record[]
+
+  // Wiki Relations
+  wikiSectionsCreated WikiSection[]  @relation("WikiSectionCreator")
+  wikiRevisions       WikiRevision[] @relation("WikiRevisionEditor")
+
+  // Follow Relations
+  // 내가 다른 사용자를 팔로우한 관계
+  followingRelations UserFollow[] @relation("Follower")
+
+  // 다른 사용자가 나를 팔로우한 관계
+  followerRelations UserFollow[] @relation("Following")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  // username은 @unique 자체가 index 역할을 하므로 별도 index를 두지 않음.
+  @@index([status])
   @@map("users")
 }
 
-// 1. 가게 사장님(Owner)용 분리된 테이블
-model Owner {
-  id               String      @id @default(uuid()) @db.Uuid
-  oauth_provider   String      @db.VarChar(32)
-  oauth_subject    String      @db.VarChar(255)
-  email            String?     @db.VarChar(320)
-  display_name     String?     @db.VarChar(100)
-  phone_number     String?     @db.VarChar(32) // 추후 휴대폰 인증 대비
-  created_at       DateTime    @default(now())
-  updated_at       DateTime    @updatedAt
+// ============================================================================
+// PLACE CATEGORY
+// ============================================================================
 
-  store_details    StoreDetail[]
+model PlaceCategory {
+  id String @id @default(uuid()) @db.Uuid
 
-  @@unique([oauth_provider, oauth_subject], map: "owners_oauth_provider_oauth_subject_key")
-  @@map("owners")
+  // 카테고리는 Enum이 아니라 self relation 테이블로 관리함.
+  // MVP에서는 약 2-depth를 사용하되 향후 더 깊게 확장 가능함.
+  parentId String? @db.Uuid
+
+  // 프로그램 내부의 안정적인 카테고리 식별 key.
+  key    String  @unique @db.VarChar(50)
+  nameKo String  @db.VarChar(100)
+  nameEn String? @db.VarChar(100)
+
+  parent   PlaceCategory?  @relation("PlaceCategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children PlaceCategory[] @relation("PlaceCategoryHierarchy")
+
+  places Place[]
+
+  // 카테고리별 Rating Metric 연결.
+  ratingMetrics CategoryRatingMetric[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([parentId])
+  @@map("place_categories")
 }
 
-// Store: 지도/목록용 요약 + 통계 컬럼(구 store_stats 테이블 제거 후 이 테이블에 통합)
-model Store {
-  place_id         String      @id @db.VarChar(255) // 외부 API(구글맵/TourAPI 등) 고유 ID
-  name             String      @db.VarChar(200)
-  category         String?     @db.VarChar(100)
+// ============================================================================
+// PLACE
+// ============================================================================
 
-  latitude         Decimal?    @db.Decimal(10, 7)
-  longitude        Decimal?    @db.Decimal(10, 7)
+model Place {
+  // TourAPI contentId 등이 아닌 Bagajido 자체 UUID.
+  id String @id @default(uuid()) @db.Uuid
 
-  // 통계(이전 store_stats → stores 컬럼)
-  avg_value_score  Decimal?    @db.Decimal(5, 2)
-  review_count     Int         @default(0)
-  like_count       Int         @default(0)
-  pick_count       Int         @default(0)
-  ai_summary_line  String?     @db.VarChar(500)
-  
-  created_at       DateTime    @default(now())
-  updated_at       DateTime    @updatedAt
+  categoryId String? @db.Uuid
 
-  detail           StoreDetail?
-  menus            Menu[]
-  orders           Order[]
-  liked_by         StoreLike[]
-  picked_by        StorePick[]
+  name String @db.VarChar(200)
 
-  @@map("stores")
+  // 중복 장소 후보 탐색용 정규화 문자열.
+  // name + address를 DB UNIQUE로 강제하지 않음.
+  normalizedName    String? @db.VarChar(200)
+  address           String?
+  normalizedAddress String?
+  postalCode        String? @db.VarChar(20)
+
+  // MVP는 lat/lng로 시작함.
+  // 근접검색 규모가 증가하면 PostGIS Point + Spatial Index 검토함.
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+
+  // 음식점/숙박/사업장에서는 강한 중복 후보 신호가 될 수 있으나
+  // 공공 관광지에는 존재하지 않을 수 있으므로 optional.
+  // MVP에서는 unique를 강제하지 않음.
+  businessNumber String? @db.VarChar(20)
+
+  phone       String? @db.VarChar(50)
+  websiteUrl  String?
+  description String? @db.Text
+
+  // 장소 종류에 따라 구조가 달라지는 가변 운영/가격 정보.
+  operationInfo Json? @db.JsonB
+  priceInfo     Json? @db.JsonB
+
+  // 폐업/운영종료 시 삭제하지 않고 ARCHIVED로 보존함.
+  status        PlaceStatus @default(ACTIVE)
+  archivedAt    DateTime?   @db.Timestamptz(6)
+  archiveReason String?
+
+  category PlaceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // TourAPI 등 외부 공급자 연결.
+  externalSources PlaceExternalSource[]
+
+  // Place 중심 UGC / Activity
+  visits       PlaceVisit[]
+  comments     PlaceComment[]
+  moments      Moment[]
+  wikiSections WikiSection[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([categoryId])
+  @@index([name])
+  @@index([normalizedName])
+  @@index([businessNumber])
+  @@index([status])
+  @@index([latitude, longitude])
+  @@map("places")
 }
 
-// StoreDetail: 주소·사장(owner)·영업 정보 등(구 단일 stores 확장 필드는 여기로 분리)
-model StoreDetail {
-  place_id         String      @id @db.VarChar(255)
-  owner_id         String?     @db.Uuid // 외부 API 데이터라 사장님 미등록 상태일 수 있음
-  
-  address          String?     @db.VarChar(500)
-  contact_number   String?     @db.VarChar(50)
-  opening_hours    String?     @db.VarChar(500)
-  description      String?     @db.Text
-  
-  created_at       DateTime    @default(now())
-  updated_at       DateTime    @updatedAt
+// ============================================================================
+// PLACE EXTERNAL SOURCE
+// ============================================================================
 
-  store            Store       @relation(fields: [place_id], references: [place_id], onDelete: Cascade)
-  owner            Owner?      @relation(fields: [owner_id], references: [id], onDelete: SetNull)
+model PlaceExternalSource {
+  id String @id @default(uuid()) @db.Uuid
 
-  @@index([owner_id], map: "store_details_owner_id_idx")
-  @@map("store_details")
+  placeId String @db.Uuid
+
+  // TourAPI는 Bagajido Place를 구성하는 외부 Source 중 하나일 뿐임.
+  provider PlaceExternalProvider
+
+  // TOUR_API의 경우 contentId 등.
+  externalId String @db.VarChar(255)
+
+  // TOUR_API의 경우 contentTypeId 등의 외부 분류값 저장 가능.
+  externalType String? @db.VarChar(100)
+
+  sourceUpdatedAt DateTime? @db.Timestamptz(6)
+  syncedAt        DateTime? @db.Timestamptz(6)
+
+  // cat1/cat2/cat3, areaCode 등 현재 정식 도메인 컬럼으로 사용하지 않는
+  // 외부 원본 데이터를 보존하기 위한 영역.
+  // 서비스 핵심 로직이 rawData 구조에 직접 의존하지 않도록 함.
+  rawData Json? @db.JsonB
+
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([provider, externalId])
+  @@index([placeId])
+  @@map("place_external_sources")
 }
 
-model StoreLike {
-  id               String   @id @default(uuid()) @db.Uuid
-  user_id          String   @db.Uuid
-  place_id         String   @db.VarChar(255)
-  created_at       DateTime @default(now())
+// ============================================================================
+// PLACE VISIT
+// ============================================================================
 
-  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  store            Store    @relation(fields: [place_id], references: [place_id], onDelete: Cascade)
+model PlaceVisit {
+  // 방문 1회당 1 row.
+  // 같은 User가 같은 Place를 여러 번 방문할 수 있음.
+  id String @id @default(uuid()) @db.Uuid
 
-  @@unique([user_id, place_id], map: "store_likes_user_id_place_id_key")
-  @@index([place_id], map: "store_likes_place_id_idx")
-  @@index([user_id], map: "store_likes_user_id_idx")
-  @@map("store_likes")
+  userId  String @db.Uuid
+  placeId String @db.Uuid
+
+  // Diary Calendar / 기간 분석의 기준 날짜.
+  visitedOn DateTime @db.Date
+
+  // 정확한 방문시각을 아는 경우에만 저장함.
+  visitedAt DateTime? @db.Timestamptz(6)
+
+  // isPaid Boolean 대신 방문만 함 / 무료 실제 이용 / 유료 실제 이용을 구분함.
+  experienceType VisitExperienceType @default(VISIT_ONLY)
+
+  // LOCAL은 User 고정 속성이 아니라 이 Place를 방문한 당시의 관계임.
+  visitorType VisitorType @default(UNKNOWN)
+
+  // MVP는 SELF_REPORTED 중심, 이후 위치/영수증/예약 인증 확장 가능.
+  verificationType VisitVerificationType @default(SELF_REPORTED)
+  verifiedAt       DateTime?             @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  place Place @relation(fields: [placeId], references: [id], onDelete: Restrict)
+
+  // 한 Visit에는 Rating 최대 1개.
+  rating PlaceRating?
+
+  // Comment / Moment는 Visit 없이도 작성 가능하므로 반대편 FK는 optional.
+  comments PlaceComment[]
+  moments  Moment[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([userId, visitedOn])
+  @@index([placeId, visitedOn])
+  // 재방문 허용을 위해 UNIQUE가 아닌 일반 index임.
+  @@index([userId, placeId])
+  @@index([placeId, visitorType])
+  @@map("place_visits")
 }
 
-model StorePick {
-  id               String   @id @default(uuid()) @db.Uuid
-  user_id          String   @db.Uuid
-  place_id         String   @db.VarChar(255)
-  created_at       DateTime @default(now())
+// ============================================================================
+// RATING METRIC DEFINITION
+// ============================================================================
 
-  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  store            Store    @relation(fields: [place_id], references: [place_id], onDelete: Cascade)
+model RatingMetricDefinition {
+  id String @id @default(uuid()) @db.Uuid
 
-  @@unique([user_id, place_id], map: "store_picks_user_id_place_id_key")
-  @@index([place_id], map: "store_picks_place_id_idx")
-  @@index([user_id], map: "store_picks_user_id_idx")
-  @@map("store_picks")
+  // 예: TASTE, VALUE, CLEANLINESS, ACCESSIBILITY
+  key String @unique @db.VarChar(50)
+
+  labelKo     String  @db.VarChar(100)
+  labelEn     String? @db.VarChar(100)
+  description String? @db.VarChar(500)
+
+  // 가능한 한 UX에서는 높은 점수가 좋은 의미가 되도록 지표명을 설계하되,
+  // 혼잡도 등 반대 방향 지표 확장성을 위해 direction을 보유함.
+  direction RatingMetricDirection @default(HIGHER_IS_BETTER)
+
+  // 과거 Rating 보존을 위해 삭제보다 비활성화함.
+  isActive Boolean @default(true)
+
+  // 동일 Metric을 여러 Category에서 재사용할 수 있도록 N:M 구조를 사용함.
+  categories CategoryRatingMetric[]
+  values     PlaceRatingMetric[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([isActive])
+  @@map("rating_metric_definitions")
 }
 
-model Menu {
-  id                   String      @id @default(uuid()) @db.Uuid
-  place_id             String      @db.VarChar(255)
-  name                 String      @db.VarChar(200)
-  reference_image_url  String      @db.VarChar(2048)
-  portion_grams        Int?
-  created_at           DateTime    @default(now())
-  updated_at           DateTime    @updatedAt
+// ============================================================================
+// CATEGORY <-> RATING METRIC
+// ============================================================================
 
-  store                Store       @relation(fields: [place_id], references: [place_id], onDelete: Cascade)
-  order_items          OrderItem[]
-  reviews              Review[]
+model CategoryRatingMetric {
+  categoryId         String @db.Uuid
+  metricDefinitionId String @db.Uuid
 
-  @@index([place_id], map: "menus_place_id_idx")
-  @@map("menus")
+  // 해당 Category의 평가 UI 표시 순서.
+  sortOrder Int @default(0)
+
+  // 해당 Category에서 필수 평가 항목인지 여부.
+  isRequired Boolean @default(false)
+
+  category PlaceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  metricDefinition RatingMetricDefinition @relation(fields: [metricDefinitionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([categoryId, metricDefinitionId])
+  @@index([categoryId, sortOrder])
+  @@map("category_rating_metrics")
 }
 
-model Order {
-  id                   String      @id @default(uuid()) @db.Uuid
-  user_id              String      @db.Uuid
-  place_id             String      @db.VarChar(255)
-  total_amount         Decimal     @db.Decimal(12, 2)
-  currency             String      @db.VarChar(8)
-  payment_status       String      @db.VarChar(32)
-  external_payment_id  String?     @db.VarChar(128)
-  created_at           DateTime    @default(now())
+// ============================================================================
+// PLACE RATING
+// ============================================================================
 
-  user                 User        @relation(fields: [user_id], references: [id], onDelete: Restrict)
-  store                Store       @relation(fields: [place_id], references: [place_id], onDelete: Restrict)
-  items                OrderItem[]
-  reviews              Review[]
+model PlaceRating {
+  id String @id @default(uuid()) @db.Uuid
 
-  @@index([user_id], map: "orders_user_id_idx")
-  @@index([place_id], map: "orders_place_id_idx")
-  @@map("orders")
+  // Rating은 실제 방문 경험에 필수 종속함.
+  // 한 Visit에는 Rating 최대 1개.
+  visitId String @unique @db.Uuid
+
+  // MVP 1~5 정수형.
+  // 범위 CHECK는 SQL migration에서 추가하는 방향.
+  overallScore Int @db.SmallInt
+
+  visit PlaceVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  metrics PlaceRatingMetric[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("place_ratings")
 }
 
-model OrderItem {
-  id           String  @id @default(uuid()) @db.Uuid
-  order_id     String  @db.Uuid
-  menu_id      String  @db.Uuid
-  quantity     Int
-  unit_price   Decimal @db.Decimal(12, 2)
+// ============================================================================
+// PLACE RATING METRIC VALUE
+// ============================================================================
 
-  order        Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  menu         Menu    @relation(fields: [menu_id], references: [id], onDelete: Restrict)
+model PlaceRatingMetric {
+  ratingId           String @db.Uuid
+  metricDefinitionId String @db.Uuid
 
-  @@index([order_id], map: "order_items_order_id_idx")
-  @@index([menu_id], map: "order_items_menu_id_idx")
-  @@map("order_items")
+  // MVP 1~5 정수형.
+  // 범위 CHECK는 SQL migration에서 추가하는 방향.
+  score Int @db.SmallInt
+
+  rating PlaceRating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+
+  metricDefinition RatingMetricDefinition @relation(fields: [metricDefinitionId], references: [id], onDelete: Restrict)
+
+  // 한 Rating에서 동일 Metric을 두 번 평가하지 못하도록 함.
+  @@id([ratingId, metricDefinitionId])
+  @@index([metricDefinitionId])
+  @@map("place_rating_metrics")
 }
 
-model Review {
-  id           String    @id @default(uuid()) @db.Uuid
-  user_id      String    @db.Uuid
-  order_id     String    @db.Uuid
-  menu_id      String    @db.Uuid
-  value_score  Decimal?  @db.Decimal(5, 2)
-  ai_analysis  Json?
-  deleted_at   DateTime?
-  created_at   DateTime  @default(now())
-  updated_at   DateTime  @updatedAt
+// ============================================================================
+// PLACE COMMENT
+// ============================================================================
 
-  user         User      @relation(fields: [user_id], references: [id], onDelete: Restrict)
-  order        Order     @relation(fields: [order_id], references: [id], onDelete: Restrict)
-  menu         Menu      @relation(fields: [menu_id], references: [id], onDelete: Restrict)
-  callbacks    AiAnalysisCallback[]
+model PlaceComment {
+  id String @id @default(uuid()) @db.Uuid
 
-  @@index([user_id], map: "reviews_user_id_idx")
-  @@index([order_id], map: "reviews_order_id_idx")
-  @@index([menu_id], map: "reviews_menu_id_idx")
-  @@index([deleted_at], map: "reviews_deleted_at_idx")
-  @@map("reviews")
+  userId  String @db.Uuid
+  placeId String @db.Uuid
+
+  // Comment는 방문 전 질문/정보 공유도 허용하므로 Visit optional.
+  visitId String? @db.Uuid
+
+  // Threads 형태의 Self Relation.
+  // DB는 depth를 제한하지 않고 UI / 서비스 정책에서 제한 가능함.
+  parentId String? @db.Uuid
+
+  // Soft Delete 후 Thread 구조를 유지하면서 본문을 제거할 수 있도록 nullable.
+  content String? @db.VarChar(2000)
+
+  // 실제 작성 언어. User.preferredLocale과 다를 수 있음.
+  languageCode String? @db.VarChar(10)
+
+  status CommentStatus @default(ACTIVE)
+
+  // 실제 사용자가 본문을 수정한 시점.
+  editedAt  DateTime? @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  // Reply도 Place를 직접 보유하여 Place Comment 목록 조회를 단순화함.
+  place Place @relation(fields: [placeId], references: [id], onDelete: Restrict)
+
+  visit PlaceVisit? @relation(fields: [visitId], references: [id], onDelete: SetNull)
+
+  parent  PlaceComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies PlaceComment[] @relation("CommentReplies")
+
+  likes CommentLike[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([placeId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([visitId])
+  @@index([parentId])
+  @@map("place_comments")
 }
 
-model AiAnalysisCallback {
-  id               String   @id @default(uuid()) @db.Uuid
-  external_job_id  String   @unique @db.VarChar(128)
-  review_id        String   @db.Uuid
-  status           String   @db.VarChar(32)
-  payload          Json
-  received_at      DateTime @default(now())
+// ============================================================================
+// COMMENT LIKE
+// ============================================================================
 
-  review           Review   @relation(fields: [review_id], references: [id], onDelete: Cascade)
+model CommentLike {
+  userId    String @db.Uuid
+  commentId String @db.Uuid
 
-  @@index([review_id], map: "ai_analysis_callbacks_review_id_idx")
-  @@map("ai_analysis_callbacks")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  comment PlaceComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  // User 한 명이 Comment 하나에 좋아요 한 번만 가능함.
+  @@id([userId, commentId])
+  @@index([commentId, createdAt])
+  @@map("comment_likes")
 }
+
+// ============================================================================
+// MOMENT
+// ============================================================================
+
+model Moment {
+  // 하나의 장소에서 남긴 하나의 순간 / 이미지 콘텐츠.
+  id String @id @default(uuid()) @db.Uuid
+
+  userId  String @db.Uuid
+  placeId String @db.Uuid
+
+  // 오래된 사진 업로드 등도 허용하므로 Visit optional.
+  visitId String? @db.Uuid
+
+  // 전체 URL이 아니라 Storage Provider + Object Key만 저장함.
+  storageProvider StorageProvider
+  objectKey       String
+
+  // Place Gallery에서는 숨길 수 있지만 Diary / Record에서는 기록 텍스트로 활용 가능함.
+  caption      String? @db.VarChar(1000)
+  languageCode String? @db.VarChar(10)
+
+  // 실제 촬영시각을 아는 경우에만 저장함.
+  takenAt DateTime? @db.Timestamptz(6)
+
+  // 이미지 렌더링 / Storage 운영에 필요한 최소 메타데이터.
+  // 원본 EXIF 전체는 저장하지 않는 방향.
+  width     Int?
+  height    Int?
+  mimeType  String? @db.VarChar(100)
+  sizeBytes Int?
+
+  status    MomentStatus @default(ACTIVE)
+  deletedAt DateTime?    @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  place Place @relation(fields: [placeId], references: [id], onDelete: Restrict)
+
+  visit PlaceVisit? @relation(fields: [visitId], references: [id], onDelete: SetNull)
+
+  likes MomentLike[]
+
+  // 여러 Record에서 하나의 Moment를 재사용할 수 있음.
+  records RecordMoment[]
+
+  // Record의 대표 Moment로 사용되는 direct relation.
+  coverOfRecords Record[] @relation("RecordCoverMoment")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([storageProvider, objectKey])
+  @@index([placeId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([visitId])
+  @@map("moments")
+}
+
+// ============================================================================
+// MOMENT LIKE
+// ============================================================================
+
+model MomentLike {
+  userId   String @db.Uuid
+  momentId String @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  moment Moment @relation(fields: [momentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  // User 한 명이 Moment 하나에 좋아요 한 번만 가능함.
+  @@id([userId, momentId])
+  @@index([momentId, createdAt])
+  @@map("moment_likes")
+}
+
+// ============================================================================
+// WIKI SECTION
+// ============================================================================
+
+model WikiSection {
+  id String @id @default(uuid()) @db.Uuid
+
+  placeId String @db.Uuid
+
+  // 하위 목차를 지원하기 위한 Self Relation.
+  parentId String? @db.Uuid
+
+  // 한국어/영어 등 Wiki 문서 자체를 언어별로 분리함.
+  locale String @default("ko-KR") @db.VarChar(10)
+
+  // 현재 사용자에게 보여줄 Revision pointer.
+  // 실제 title/content 원본은 WikiRevision에만 존재함.
+  currentRevisionId String? @unique @db.Uuid
+
+  sortOrder Int @default(0)
+
+  // Edit War / 공식정보 영역 등을 운영자가 임시 잠글 수 있음.
+  isLocked Boolean @default(false)
+
+  // Place 생성 시 자동으로 만들어진 기본 Skeleton Section 여부.
+  isSystemSection Boolean @default(false)
+
+  // 시스템 생성 Section은 NULL 가능.
+  createdById String? @db.Uuid
+
+  status    WikiSectionStatus @default(ACTIVE)
+  deletedAt DateTime?         @db.Timestamptz(6)
+
+  place Place @relation(fields: [placeId], references: [id], onDelete: Restrict)
+
+  createdBy User? @relation("WikiSectionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  parent   WikiSection?  @relation("WikiSectionHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children WikiSection[] @relation("WikiSectionHierarchy")
+
+  // Section 전체 Revision history.
+  revisions WikiRevision[] @relation("WikiSectionRevisions")
+
+  // 현재 사용자에게 노출되는 Revision.
+  currentRevision WikiRevision? @relation("WikiCurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([placeId, locale, status, sortOrder])
+  @@index([parentId, sortOrder])
+  @@index([createdById])
+  @@map("wiki_sections")
+}
+
+// ============================================================================
+// WIKI REVISION
+// ============================================================================
+
+model WikiRevision {
+  id String @id @default(uuid()) @db.Uuid
+
+  sectionId String @db.Uuid
+
+  // User 탈퇴/삭제 정책과 별개로 Wiki history를 보존할 수 있도록 nullable.
+  editorId String? @db.Uuid
+
+  // Section별 v1, v2, v3...
+  version Int
+
+  // title도 사용자 편집 이력에 포함되므로 Revision에 저장함.
+  title String @db.VarChar(200)
+
+  // MVP에서는 Markdown Text 저장 방향.
+  content String @db.Text
+
+  editSummary String? @db.VarChar(500)
+
+  type WikiRevisionType @default(EDIT)
+
+  section WikiSection @relation("WikiSectionRevisions", fields: [sectionId], references: [id], onDelete: Cascade)
+
+  editor User? @relation("WikiRevisionEditor", fields: [editorId], references: [id], onDelete: SetNull)
+
+  // 이 Revision을 currentRevision으로 가리키는 Section.
+  currentOf WikiSection? @relation("WikiCurrentRevision")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  // 같은 Section에서 version 중복 방지.
+  @@unique([sectionId, version])
+  @@index([sectionId, createdAt])
+  @@index([editorId, createdAt])
+  @@map("wiki_revisions")
+}
+
+// ============================================================================
+// USER FOLLOW
+// ============================================================================
+
+model UserFollow {
+  id String @id @default(uuid()) @db.Uuid
+
+  // Follow를 한 사용자.
+  followerId String @db.Uuid
+
+  // Follow 대상 사용자.
+  followingId String @db.Uuid
+
+  follower User @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+
+  following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  // 한 Follow 관계에 여러 Reason 선택 가능.
+  reasons FollowReason[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  // 동일 방향 Follow 중복 방지.
+  @@unique([followerId, followingId])
+  @@index([followerId, createdAt])
+  @@index([followingId, createdAt])
+  // followerId <> followingId CHECK는 SQL migration에서 추가하는 방향.
+  @@map("user_follows")
+}
+
+// ============================================================================
+// FOLLOW REASON DEFINITION
+// ============================================================================
+
+model FollowReasonDefinition {
+  id String @id @default(uuid()) @db.Uuid
+
+  // 예: MOMENT_STYLE, RATING_OBJECTIVITY, TRAVEL_STYLE
+  key String @unique @db.VarChar(50)
+
+  labelKo     String  @db.VarChar(100)
+  labelEn     String? @db.VarChar(100)
+  description String? @db.VarChar(500)
+
+  sortOrder Int @default(0)
+
+  // 운영 중 이유 변경에 Migration이 필요 없도록 DB Definition으로 관리함.
+  // 삭제보다 비활성화하여 기존 Follow data를 보존함.
+  isActive Boolean @default(true)
+
+  follows FollowReason[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([isActive, sortOrder])
+  @@map("follow_reason_definitions")
+}
+
+// ============================================================================
+// FOLLOW REASON
+// ============================================================================
+
+model FollowReason {
+  followId           String @db.Uuid
+  reasonDefinitionId String @db.Uuid
+
+  follow UserFollow @relation(fields: [followId], references: [id], onDelete: Cascade)
+
+  reasonDefinition FollowReasonDefinition @relation(fields: [reasonDefinitionId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  // 같은 Follow 관계에서 동일 Reason 중복 선택 방지.
+  @@id([followId, reasonDefinitionId])
+  @@index([reasonDefinitionId, createdAt])
+  @@map("follow_reasons")
+}
+
+// ============================================================================
+// RECORD
+// ============================================================================
+
+model Record {
+  // 여러 Moment를 사용자가 원하는 순서로 묶어 만드는 하나의 여행 기록.
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+
+  title String @db.VarChar(200)
+
+  // 전체 Record 소개/설명.
+  description String? @db.VarChar(2000)
+
+  // Storage URL을 중복 저장하지 않고 기존 Moment를 Cover로 참조함.
+  coverMomentId String? @db.Uuid
+
+  // 날짜 중심 Record가 아닌 경우도 허용하기 위해 optional.
+  startedOn DateTime? @db.Date
+  endedOn   DateTime? @db.Date
+
+  visibility RecordVisibility @default(PUBLIC)
+  status     RecordStatus     @default(DRAFT)
+
+  publishedAt DateTime? @db.Timestamptz(6)
+  deletedAt   DateTime? @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  coverMoment Moment? @relation("RecordCoverMoment", fields: [coverMomentId], references: [id], onDelete: SetNull)
+
+  // Record <-> Moment N:M 중간 Entity.
+  moments RecordMoment[]
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([userId, status, createdAt])
+  @@index([userId, status, publishedAt])
+  @@index([coverMomentId])
+  @@map("records")
+}
+
+// ============================================================================
+// RECORD <-> MOMENT
+// ============================================================================
+
+model RecordMoment {
+  recordId String @db.Uuid
+  momentId String @db.Uuid
+
+  // 실제 촬영/방문 순서와 별개로 사용자가 구성하는 이야기 순서.
+  sortOrder Int
+
+  // 원본 Moment.caption을 변경하지 않고 Record 문맥에서 추가할 설명.
+  note String? @db.VarChar(1000)
+
+  record Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  moment Moment @relation(fields: [momentId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  // 동일 Record 안에서 같은 Moment 중복 사용 방지.
+  @@id([recordId, momentId])
+  // Record 안에서 동일 순번 중복 방지.
+  @@unique([recordId, sortOrder])
+  @@index([momentId])
+  @@map("record_moments")
+}
+
+// ============================================================================
+// MVP v1.0 - DB / Application Invariants
+// ============================================================================
+//
+// Prisma Schema만으로 완전히 표현하기 어려워 후속 migration 또는 NestJS에서
+// 반드시 검증할 규칙들임.
+//
+// [PostgreSQL CHECK 권장]
+//   1. user_follows.followerId <> user_follows.followingId
+//   2. place_ratings.overallScore BETWEEN 1 AND 5
+//   3. place_rating_metrics.score BETWEEN 1 AND 5
+//   4. records.startedOn IS NULL OR records.endedOn IS NULL OR startedOn <= endedOn
+//
+// [NestJS Transaction / Service 검증]
+//   1. PlaceComment.visitId가 존재하면
+//      visit.userId == comment.userId && visit.placeId == comment.placeId
+//   2. Moment.visitId가 존재하면
+//      visit.userId == moment.userId && visit.placeId == moment.placeId
+//   3. WikiSection.currentRevisionId가 존재하면
+//      currentRevision.sectionId == wikiSection.id
+//   4. Wiki 새 Revision 생성 시 baseVersion과 current version을 비교하여
+//      동시 편집 Conflict를 방지함.
+//   5. Follow 생성 시 ACTIVE FollowReasonDefinition 최소 1개 이상 선택을 MVP 정책으로 강제함.
+//   6. Record에 추가되는 Moment는 MVP에서 record.userId == moment.userId를 강제함.
+//   7. Record.coverMomentId는 record에 포함된 RecordMoment 중 하나인지 검증함.
+//   8. ARCHIVED Place에는 신규 Visit / Rating / Comment / Moment / Wiki 편집을 차단하는 정책을 적용함.
+//
+// [Supabase Auth]
+//   users.authUserId -> auth.users.id FK는 Supabase 운영 방식에 맞춰 SQL migration에서
+//   별도로 추가할 수 있음. Bagajido 도메인 Relation은 users.id를 사용함.
+// ============================================================================
