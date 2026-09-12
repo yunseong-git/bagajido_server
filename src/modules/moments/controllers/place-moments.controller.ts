@@ -15,11 +15,11 @@ import { CurrentUserEntity } from '../../users/decorators/current-user.decorator
 import type { CurrentUser } from '../../users/types/current-user.type';
 import { RegisteredUserGuard } from '../../users/guards/registered-user.guard';
 
-import { CreateMomentDto } from '../dto/req/create-moment.dto';
-import { GetPlaceMomentsDto } from '../dto/req/get-place-moments.dto';
+import { CreateMomentDto } from '../dto/moment/req/create-moment.dto';
+import { GetPlaceMomentsDto } from '../dto/moment/req/get-place-moments.dto';
 
-import type { MomentResponseDto } from '../dto/res/moment-response.dto';
-import type { PublicMomentListResponseDto } from '../dto/res/public-moment-list-response.dto';
+import type { MomentResponseDto } from '../dto/moment/res/moment-response.dto';
+import type { PublicMomentListResponseDto } from '../dto/moment/res/public-moment-list-response.dto';
 
 import { MomentsCommandService } from '../services/moments-command.service';
 import { MomentsQueryService } from '../services/moments-query.service';
@@ -30,12 +30,10 @@ export class PlaceMomentsController {
     constructor(
         private readonly momentsQueryService: MomentsQueryService,
         private readonly momentsCommandService: MomentsCommandService,
-    ) {}
+    ) { }
 
     @Get()
-    @ApiOperation({
-        summary: 'Place 공개 Moment 목록 조회',
-    })
+    @ApiOperation({ summary: 'Place 공개 Moment 목록 조회' })
     getPublicPlaceMoments(
         @Param('placeId', new ParseUUIDPipe()) placeId: string,
         @Query() dto: GetPlaceMomentsDto,
@@ -46,9 +44,7 @@ export class PlaceMomentsController {
     @Post()
     @ApiBearerAuth()
     @UseGuards(RegisteredUserGuard)
-    @ApiOperation({
-        summary: 'Place에 Moment 작성',
-    })
+    @ApiOperation({ summary: 'Place에 Moment 작성' })
     createMoment(
         @CurrentUserEntity() user: CurrentUser,
         @Param('placeId', new ParseUUIDPipe()) placeId: string,

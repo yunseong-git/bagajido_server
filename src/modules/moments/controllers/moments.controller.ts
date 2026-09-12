@@ -19,11 +19,11 @@ import type { CurrentUser } from '../../users/types/current-user.type';
 import { RegisteredUserGuard } from '../../users/guards/registered-user.guard';
 import type { CurrentUser as CurrentUserType } from '../../users/types/current-user.type';
 
-import { GetMyMomentsDto } from '../dto/req/get-my-moments.dto';
-import { UpdateMomentDto } from '../dto/req/update-moment.dto';
+import { GetMyMomentsDto } from '../dto/moment/req/get-my-moments.dto';
+import { UpdateMomentDto } from '../dto/moment/req/update-moment.dto';
 
-import type { MomentListResponseDto } from '../dto/res/moment-list-response.dto';
-import type { MomentResponseDto } from '../dto/res/moment-response.dto';
+import type { MomentListResponseDto } from '../dto/moment/res/moment-list-response.dto';
+import type { MomentResponseDto } from '../dto/moment/res/moment-response.dto';
 
 import { MomentsCommandService } from '../services/moments-command.service';
 import { MomentsQueryService } from '../services/moments-query.service';
@@ -36,12 +36,10 @@ export class MomentsController {
     constructor(
         private readonly momentsQueryService: MomentsQueryService,
         private readonly momentsCommandService: MomentsCommandService,
-    ) {}
+    ) { }
 
     @Get()
-    @ApiOperation({
-        summary: '내 Moment 목록 조회',
-    })
+    @ApiOperation({ summary: '내 Moment 목록 조회' })
     getMyMoments(
         @CurrentUserEntity() user: CurrentUser,
         @Query() dto: GetMyMomentsDto,
@@ -50,9 +48,7 @@ export class MomentsController {
     }
 
     @Get(':momentId')
-    @ApiOperation({
-        summary: '내 Moment 상세 조회',
-    })
+    @ApiOperation({ summary: '내 Moment 상세 조회' })
     getMyMoment(
         @CurrentUserEntity() user: CurrentUser,
         @Param('momentId', new ParseUUIDPipe()) momentId: string,
@@ -61,9 +57,7 @@ export class MomentsController {
     }
 
     @Patch(':momentId')
-    @ApiOperation({
-        summary: '내 Moment 수정',
-    })
+    @ApiOperation({ summary: '내 Moment 수정' })
     updateMoment(
         @CurrentUserEntity() user: CurrentUser,
         @Param('momentId', new ParseUUIDPipe()) momentId: string,

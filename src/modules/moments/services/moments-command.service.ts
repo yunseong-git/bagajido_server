@@ -9,14 +9,14 @@ import {
 
 import { PlacesQueryService } from '../../places/services/places-query.service';
 
-import type { CreateMomentDto } from '../dto/req/create-moment.dto';
-import type { UpdateMomentDto } from '../dto/req/update-moment.dto';
-import type { MomentResponseDto } from '../dto/res/moment-response.dto';
+import type { CreateMomentDto } from '../dto/moment/req/create-moment.dto';
+import type { UpdateMomentDto } from '../dto/moment/req/update-moment.dto';
+import type { MomentResponseDto } from '../dto/moment/res/moment-response.dto';
 
 import { toMomentResponse } from '../mappers/moment-response.mapper';
 
-import { MomentsPrismaRepository } from '../moments.repository';
-import type { UpdateMomentInput } from '../moments.repository.interface';
+import { MomentsPrismaRepository } from '../repositories/moment/moments.repository';
+import type { UpdateMomentInput } from '../repositories/moment/moments.repository.interface';
 
 import { parseDateOnly } from '../utils/moment-date.util';
 

@@ -10,6 +10,9 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { PlacesModule } from './modules/places/places.module';
 import { MomentsModule } from './modules/moments/moments.module';
+import { RatingsModule } from './modules/ratings/ratings.module';
+import { StorageModule } from './modules/storage/storage.module';
+import { FollowsModule } from './modules/follows/follows.module';
 
 @Module({
     imports: [
@@ -21,6 +24,9 @@ import { MomentsModule } from './modules/moments/moments.module';
         UsersModule,
         PlacesModule,
         MomentsModule,
+        RatingsModule,
+        StorageModule,
+        FollowsModule,
     ],
     controllers: [AppController],
     providers: [AppService],

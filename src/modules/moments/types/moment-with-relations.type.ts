@@ -1,3 +1,4 @@
+/**내부/내 Moment 조회용 */
 import { Prisma } from '@prisma/client';
 
 export const momentWithRelationsInclude = {
@@ -15,24 +16,4 @@ export const momentWithRelationsInclude = {
 
 export type MomentWithRelations = Prisma.MomentGetPayload<{
     include: typeof momentWithRelationsInclude;
-}>;
-
-export const publicMomentInclude = {
-    user: {
-        select: {
-            id: true,
-            username: true,
-            displayName: true,
-            profileImageKey: true,
-        },
-    },
-    rating: {
-        select: {
-            id: true,
-        },
-    },
-} satisfies Prisma.MomentInclude;
-
-export type PublicMomentWithRelations = Prisma.MomentGetPayload<{
-    include: typeof publicMomentInclude;
 }>;
